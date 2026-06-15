@@ -130,3 +130,8 @@ dmypy.json
 
 # Configuration files
 config.yaml
+# Runtime output/log files
+app_out.txt
+app_err.txt
+wake_out.txt
+wake_err.txt

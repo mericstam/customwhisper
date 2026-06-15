@@ -1,6 +1,0 @@
-Ensuring wake-word models are downloaded...
-Loading wake word 'hey_jarvis' (onnx)...
-
-Wake listener READY (default (MME)). Say "hey jarvis" to start dictation.
-(threshold=0.5, cooldown=3.0s)
-
