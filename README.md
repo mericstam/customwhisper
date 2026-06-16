@@ -5,6 +5,10 @@ A hands-free, voice-controlled speech-to-text tool for Windows. Built on a custo
 into the active window using a local [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
 model (or the OpenAI API).
 
+> **Based on [WhisperWriter](https://github.com/savbell/whisper-writer) by savbell, licensed under
+> GPL-3.0. This is a modified version.** Because the upstream project is GPL-3.0 (copyleft), this
+> project is also licensed under [GPL-3.0](./LICENSE). See [Changes from upstream](#changes-from-upstream).
+
 What makes this build *custom*:
 
 - **"Hey Jarvis" wake word** — start a dictation completely hands-free, no key press needed.
@@ -116,9 +120,27 @@ directly. Highlights:
 To use the OpenAI API instead of a local model, set `model_options.use_api: true` and put your key in
 a `.env` file (`OPENAI_API_KEY=...`) or via the Settings window.
 
-## Credits
+## Changes from upstream
 
-Forked from [WhisperWriter](https://github.com/savbell/whisper-writer) by savbell (GPL-licensed).
-Transcription by [faster-whisper](https://github.com/SYSTRAN/faster-whisper); wake word by
-[openWakeWord](https://github.com/dscripka/openWakeWord); voice commands by
-[Vosk](https://github.com/alphacep/vosk-api).
+This project modifies [WhisperWriter](https://github.com/savbell/whisper-writer) by adding:
+
+- An always-on **"Hey Jarvis" wake-word listener** (`wake_listener.py`) for fully hands-free
+  activation, plus `Start Hands-Free.bat` to run it alongside the app.
+- **In-dictation voice commands** via Vosk (`src/command_recognizer.py`) — *"Jarvis hold / continue /
+  end session / cancel"* — wired into the recording loop in `src/result_thread.py`, with audio
+  trimming so command words aren't transcribed.
+- A **`voice_commands`** config section (`src/config_schema.yaml`).
+- **Clipboard-paste output** (`input_method: clipboard`) and **auto-submit** (`press_enter_after`) in
+  `src/input_simulation.py`.
+
+## Credits & licenses
+
+Based on [WhisperWriter](https://github.com/savbell/whisper-writer) by savbell — **GPL-3.0**. This
+project is distributed under the same license; see [LICENSE](./LICENSE).
+
+Built with these open-source projects (installed as dependencies, not bundled):
+
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — transcription (MIT)
+- [openWakeWord](https://github.com/dscripka/openWakeWord) — wake word (Apache-2.0)
+- [Vosk](https://github.com/alphacep/vosk-api) — voice commands (Apache-2.0)
+- [PyQt5](https://www.riverbankcomputing.com/software/pyqt/) — UI (GPL-3.0 / commercial)
