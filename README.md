@@ -57,6 +57,7 @@ Set via `recording_mode` in the config:
 ## Project layout
 
 ```
+install.ps1                  # one-shot installer: venv + deps + desktop shortcut
 run.py                       # entry point -> launches src/main.py
 wake_listener.py             # "Hey Jarvis" wake-word listener (openWakeWord)
 _launcher.py                 # shared windowless launch/stop helper (pythonw)
@@ -85,14 +86,27 @@ assets/                      # icons, beep sound, demo gifs
 
 ### Install (Windows)
 
+Run the installer from the repo root — it creates the venv, installs all dependencies, and adds a
+**CustomWhisper** desktop shortcut. It's idempotent, so it's safe to re-run.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+Options: `-SkipDeps` (only set up venv + shortcut), `-NoShortcut` (skip the desktop shortcut).
+
+<details>
+<summary>Manual install</summary>
+
 ```powershell
 python -m venv venv
 venv\Scripts\activate
 pip install -r requirements-win.txt
 ```
 
-> `requirements-win.txt` is the pinned, Windows-tested set. The extra custom features also need
-> `openwakeword`, `vosk`, `audioplayer`, and `pyperclip` — make sure these are installed in the venv.
+`requirements-win.txt` is the pinned, Windows-tested set and includes the custom-feature deps
+(`openwakeword`, `vosk`, `audioplayer`, `pyperclip`).
+</details>
 
 ### Run
 
