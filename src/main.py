@@ -24,7 +24,7 @@ class WhisperWriterApp(QObject):
         """
         super().__init__()
         self.app = QApplication(sys.argv)
-        self.app.setWindowIcon(QIcon(os.path.join('assets', 'ww-logo.png')))
+        self.app.setWindowIcon(QIcon(os.path.join('assets', 'ww-logo-custom.png')))
 
         ConfigManager.initialize()
 
@@ -81,11 +81,11 @@ class WhisperWriterApp(QObject):
         """
         Create the system tray icon and its context menu.
         """
-        self.tray_icon = QSystemTrayIcon(QIcon(os.path.join('assets', 'ww-logo.png')), self.app)
+        self.tray_icon = QSystemTrayIcon(QIcon(os.path.join('assets', 'ww-logo-custom.png')), self.app)
 
         tray_menu = QMenu()
 
-        show_action = QAction('WhisperWriter Main Menu', self.app)
+        show_action = QAction('CustomWhisper Main Menu', self.app)
         show_action.triggered.connect(self.main_window.show)
         tray_menu.addAction(show_action)
 

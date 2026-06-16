@@ -15,7 +15,7 @@ class StatusWindow(BaseWindow):
         """
         Initialize the status window.
         """
-        super().__init__('WhisperWriter Status', 320, 120)
+        super().__init__('CustomWhisper Status', 320, 120)
         self.initStatusUI()
         self.statusSignal.connect(self.updateStatus)
 
