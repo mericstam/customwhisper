@@ -95,7 +95,7 @@ if ($NoShortcut) {
     $desktop = [Environment]::GetFolderPath('Desktop')   # resolves to OneDrive desktop if redirected
     $lnkPath = Join-Path $desktop 'CustomWhisper.lnk'
     $launcher = Join-Path $root 'Start Hands-Free.pyw'
-    $icon = Join-Path $root 'assets\ww-logo.ico'
+    $icon = Join-Path $root 'assets\ww-custom.ico'
     if (-not (Test-Path $venvPyw)) { throw "Missing $venvPyw" }
     if (-not (Test-Path $launcher)) { throw "Missing $launcher" }
 
