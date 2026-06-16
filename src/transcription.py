@@ -1,11 +1,33 @@
 import io
 import os
+import re
 import numpy as np
 import soundfile as sf
 from faster_whisper import WhisperModel
 from openai import OpenAI
 
 from utils import ConfigManager
+
+# Only unambiguous spoken disfluencies. Real words like "er" (err), "ah", and
+# "mm" are deliberately excluded to avoid eating legitimate transcription.
+FILLER_WORDS_PATTERN = re.compile(
+    r"(?:\s*[,;:]\s*)?\b(?:uh+|um+|erm+|hm+)\b(?:\s*[,;:])?",
+    re.IGNORECASE,
+)
+SPACING_BEFORE_PUNCTUATION_PATTERN = re.compile(r"\s+([,.!?;:])")
+MULTIPLE_SPACES_PATTERN = re.compile(r"[ \t]{2,}")
+
+
+def remove_filler_words(transcription):
+    """
+    Remove common single-word disfluencies (um, uh, erm, hmm) while preserving
+    punctuation and sentence spacing.
+    """
+    transcription = FILLER_WORDS_PATTERN.sub("", transcription)
+    transcription = SPACING_BEFORE_PUNCTUATION_PATTERN.sub(r"\1", transcription)
+    transcription = MULTIPLE_SPACES_PATTERN.sub(" ", transcription)
+    transcription = SPACING_BEFORE_PUNCTUATION_PATTERN.sub(r"\1", transcription)
+    return transcription.strip()
 
 def create_local_model():
     """
@@ -94,6 +116,8 @@ def post_process_transcription(transcription):
     """
     transcription = transcription.strip()
     post_processing = ConfigManager.get_config_section('post_processing')
+    if post_processing.get('remove_filler_words'):
+        transcription = remove_filler_words(transcription)
     if post_processing['remove_trailing_period'] and transcription.endswith('.'):
         transcription = transcription[:-1]
     if post_processing['add_trailing_space']:

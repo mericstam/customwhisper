@@ -146,6 +146,10 @@ post_processing:
     value: false
     type: bool
     description: "Set to true to convert the transcribed text to lowercase."
+  remove_filler_words:
+    value: false
+    type: bool
+    description: "Set to true to remove common spoken filler words (um, uh, erm, hmm) before writing the transcription."
   input_method:
     value: pynput
     type: str

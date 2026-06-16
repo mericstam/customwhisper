@@ -133,7 +133,8 @@ directly. Highlights:
   domain terms.
 - **`recording_options`** — `activation_key`, `recording_mode`, `silence_duration`, `sample_rate`.
 - **`post_processing`** — `input_method` (`pynput` to type, `clipboard` to paste), `press_enter_after`,
-  trailing space / period handling.
+  `remove_filler_words` (strip spoken `um`/`uh`/`erm`/`hmm`; **off by default**), trailing space /
+  period handling.
 - **`voice_commands`** — `enabled` and `trim_ms` (safety margin trimmed around a spoken command so the
   command word isn't transcribed).
 
@@ -145,13 +146,16 @@ a `.env` file (`OPENAI_API_KEY=...`) or via the Settings window.
 This project modifies [WhisperWriter](https://github.com/savbell/whisper-writer) by adding:
 
 - An always-on **"Hey Jarvis" wake-word listener** (`wake_listener.py`) for fully hands-free
-  activation, plus `Start Hands-Free.bat` to run it alongside the app.
+  activation, plus windowless `.pyw` launchers (`Start Hands-Free.pyw`, `Stop CustomWhisper.pyw`) and
+  an `install.ps1` setup script.
 - **In-dictation voice commands** via Vosk (`src/command_recognizer.py`) — *"Jarvis hold / continue /
   end session / cancel"* — wired into the recording loop in `src/result_thread.py`, with audio
   trimming so command words aren't transcribed.
 - A **`voice_commands`** config section (`src/config_schema.yaml`).
 - **Clipboard-paste output** (`input_method: clipboard`) and **auto-submit** (`press_enter_after`) in
   `src/input_simulation.py`.
+- Optional **filler-word removal** (`remove_filler_words`, off by default) that strips spoken
+  `um`/`uh`/`erm`/`hmm` in `src/transcription.py`.
 
 ## Credits & licenses
 
