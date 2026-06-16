@@ -22,7 +22,7 @@ What makes this build *custom*:
 
 The app has two cooperating processes (both launched by `Start Hands-Free.pyw`):
 
-1. **`run.py` → `src/main.py`** — the WhisperWriter app. Sits in the system tray, listens for the
+1. **`run.py` → `src/main.py`** — the CustomWhisper app. Sits in the system tray, listens for the
    activation hotkey (`Right-Ctrl + Space` by default), records, transcribes, and writes the result
    into the focused window.
 2. **`wake_listener.py`** — an always-on, fully local wake-word listener (openWakeWord). When it hears
