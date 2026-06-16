@@ -135,3 +135,6 @@ app_out.txt
 app_err.txt
 wake_out.txt
 wake_err.txt
+
+# Launcher runtime PID file
+.cw_pids

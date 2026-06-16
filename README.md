@@ -20,7 +20,7 @@ What makes this build *custom*:
 
 ## How it works
 
-The app has two cooperating processes (both launched by `Start Hands-Free.bat`):
+The app has two cooperating processes (both launched by `Start Hands-Free.pyw`):
 
 1. **`run.py` → `src/main.py`** — the WhisperWriter app. Sits in the system tray, listens for the
    activation hotkey (`Right-Ctrl + Space` by default), records, transcribes, and writes the result
@@ -59,8 +59,10 @@ Set via `recording_mode` in the config:
 ```
 run.py                       # entry point -> launches src/main.py
 wake_listener.py             # "Hey Jarvis" wake-word listener (openWakeWord)
-Start Hands-Free.bat         # runs the app + wake listener together
-Start WhisperWriter.bat      # runs just the app (hotkey only, no wake word)
+_launcher.py                 # shared windowless launch/stop helper (pythonw)
+Start Hands-Free.pyw         # double-click: app + wake listener, no console windows
+Start WhisperWriter.pyw      # double-click: app only (hotkey, no wake word)
+Stop CustomWhisper.pyw       # double-click: stop the app and the listener
 src/
   main.py                    # app, system tray, orchestration
   key_listener.py            # global hotkey detection (pynput / evdev backends)
@@ -94,12 +96,16 @@ pip install -r requirements-win.txt
 
 ### Run
 
-- **Hands-free (app + wake word):** double-click `Start Hands-Free.bat`, then say **"Hey Jarvis"** to
-  dictate (or tap **Right-Ctrl + Space**).
-- **App only (hotkey, no wake word):** `Start WhisperWriter.bat`, or `python run.py`.
+Launchers run windowless via `pythonw` — no console windows. The app lives in the system tray.
 
-On first run, a Settings window opens. Configure and save, then press **Start** to activate the
-listener.
+- **Hands-free (app + wake word):** double-click `Start Hands-Free.pyw`, then say **"Hey Jarvis"** to
+  dictate (or tap **Right-Ctrl + Space**).
+- **App only (hotkey, no wake word):** double-click `Start WhisperWriter.pyw` (or run `python run.py`
+  from a terminal if you want to see logs live).
+- **Stop everything:** double-click `Stop CustomWhisper.pyw`.
+
+Output is written to `app_out.txt` / `wake_out.txt` for troubleshooting. On first run, a Settings
+window opens — configure and save, then press **Start** to activate the listener.
 
 ## Configuration
 
