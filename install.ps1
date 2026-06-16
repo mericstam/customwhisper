@@ -114,5 +114,5 @@ if ($NoShortcut) {
 Write-Host ''
 Info 'Done.'
 Write-Host '    - Double-click "CustomWhisper" on your desktop, then say "Hey Jarvis".' -ForegroundColor Green
-Write-Host '    - Or run "Start WhisperWriter.pyw" for hotkey-only mode (Right-Ctrl+Space).' -ForegroundColor Green
+Write-Host '    - Or run "Start CustomWhisper.pyw" for hotkey-only mode (Right-Ctrl+Space).' -ForegroundColor Green
 Write-Host '    - Run "Stop CustomWhisper.pyw" to shut everything down.' -ForegroundColor Green

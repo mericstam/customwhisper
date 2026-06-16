@@ -62,7 +62,7 @@ run.py                       # entry point -> launches src/main.py
 wake_listener.py             # "Hey Jarvis" wake-word listener (openWakeWord)
 _launcher.py                 # shared windowless launch/stop helper (pythonw)
 Start Hands-Free.pyw         # double-click: app + wake listener, no console windows
-Start WhisperWriter.pyw      # double-click: app only (hotkey, no wake word)
+Start CustomWhisper.pyw      # double-click: app only (hotkey, no wake word)
 Stop CustomWhisper.pyw       # double-click: stop the app and the listener
 src/
   main.py                    # app, system tray, orchestration
@@ -114,7 +114,7 @@ Launchers run windowless via `pythonw` — no console windows. The app lives in 
 
 - **Hands-free (app + wake word):** double-click `Start Hands-Free.pyw`, then say **"Hey Jarvis"** to
   dictate (or tap **Right-Ctrl + Space**).
-- **App only (hotkey, no wake word):** double-click `Start WhisperWriter.pyw` (or run `python run.py`
+- **App only (hotkey, no wake word):** double-click `Start CustomWhisper.pyw` (or run `python run.py`
   from a terminal if you want to see logs live).
 - **Stop everything:** double-click `Stop CustomWhisper.pyw`.
 
