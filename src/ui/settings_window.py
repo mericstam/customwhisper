@@ -66,6 +66,10 @@ class SettingsWindow(BaseWindow):
     def create_tabs(self):
         """Create tabs for each category in the schema."""
         for category, settings in self.schema.items():
+            # custom_commands has a dedicated, hand-built 'Commands' tab (create_commands_tab);
+            # skip it here so we don't render a duplicate, half-broken schema-driven tab.
+            if category == 'custom_commands':
+                continue
             tab = QWidget()
             tab_layout = QVBoxLayout()
             tab.setLayout(tab_layout)

@@ -14,6 +14,8 @@ What makes this build *custom*:
 - **"Hey Jarvis" wake word** — start a dictation completely hands-free, no key press needed.
 - **Spoken commands mid-dictation** — say *"Jarvis hold / continue / end session / cancel"* to pause,
   resume, finish, or discard a recording without touching the keyboard.
+- **Custom app-launch commands** — map a spoken phrase (e.g. *"open word"*) to launching an app, file,
+  or URL, or running a shell command, instead of typing the text out.
 - **Clipboard paste output** — text is pasted instantly (Ctrl+V) instead of typed key-by-key, which is
   faster and immune to dropped characters.
 - **Auto-submit** — optionally press Enter after the text is inserted.
@@ -45,6 +47,19 @@ out of the audio so it isn't transcribed.
 Phrases are matched exactly. You can add variants in the `DEFAULT_COMMANDS` map in
 `src/command_recognizer.py`.
 
+### Custom app-launch commands
+
+After a dictation is transcribed, the text is matched (case- and punctuation-insensitive) against a
+list of phrase → action mappings you configure in **Settings > Commands** (`src/custom_commands.py`).
+On a match, the action runs *instead* of the text being typed. Two action types:
+
+- **`open`** — open an app, file, or URL via the Windows shell `start` (resolves registered app names
+  like `winword`, `excel`, `msedge`, `notepad`, as well as paths and URLs).
+- **`run`** — run a raw shell command line.
+
+Mappings are stored in `config.yaml` under the top-level `custom_commands` key. For example, saying
+*"open word"* can launch Word, or *"lock screen"* can run a command.
+
 ### Recording modes
 
 Set via `recording_mode` in the config:
@@ -69,6 +84,8 @@ src/
   key_listener.py            # global hotkey detection (pynput / evdev backends)
   result_thread.py           # records audio, runs VAD + voice commands, transcribes
   command_recognizer.py      # in-dictation Vosk command recognizer ("Jarvis ...")
+  custom_commands.py         # post-dictation phrase -> launch app / run command
+  process_cleanup.py         # kill related CustomWhisper processes on exit
   transcription.py           # local faster-whisper or OpenAI API transcription
   input_simulation.py        # types/pastes the result (pynput / clipboard / dotool)
   utils.py                   # ConfigManager (YAML config + schema)
@@ -152,10 +169,17 @@ This project modifies [WhisperWriter](https://github.com/savbell/whisper-writer)
   end session / cancel"* — wired into the recording loop in `src/result_thread.py`, with audio
   trimming so command words aren't transcribed.
 - A **`voice_commands`** config section (`src/config_schema.yaml`).
+- **Custom app-launch commands** (`src/custom_commands.py`) — post-dictation phrase → action mappings
+  that open an app/file/URL or run a shell command, configured in **Settings > Commands**.
 - **Clipboard-paste output** (`input_method: clipboard`) and **auto-submit** (`press_enter_after`) in
   `src/input_simulation.py`.
 - Optional **filler-word removal** (`remove_filler_words`, off by default) that strips spoken
   `um`/`uh`/`erm`/`hmm` in `src/transcription.py`.
+- A **microphone test panel** in Settings (device picker, live level bar, receive-state status) plus a
+  silent-mic timeout so a muted or busy device no longer hangs the recording loop
+  (`src/result_thread.py`).
+- **Full process cleanup on exit** (`src/process_cleanup.py`) — quitting the app also stops the
+  hands-free wake-word listener and any stray CustomWhisper processes holding the microphone.
 
 ## Credits & licenses
 

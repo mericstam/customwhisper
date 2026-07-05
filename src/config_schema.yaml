@@ -185,3 +185,16 @@ voice_commands:
     value: 300
     type: int
     description: "Extra safety margin (ms) added to the precise command-audio span that gets trimmed, so command words aren't transcribed."
+
+# Custom app-launch commands. After a dictation, matching text runs an action instead of being typed.
+# Edited via the hand-built 'Commands' tab in Settings (not schema-driven widgets), so this section is
+# skipped when auto-generating tabs. 'commands' is a list of {phrase, type: open|run, target} dicts.
+custom_commands:
+  enabled:
+    value: true
+    type: bool
+    description: "Enable custom app-launch commands: matching a phrase runs an action instead of typing the text."
+  commands:
+    value: []
+    type: list
+    description: "List of {phrase, type (open|run), target} mappings. 'open' launches an app/file/URL; 'run' executes a shell command."
