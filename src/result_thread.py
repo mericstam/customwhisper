@@ -162,7 +162,17 @@ class ResultThread(QThread):
                             blocksize=frame_size, device=recording_options.get('sound_device'),
                             callback=audio_callback):
             while self.is_running and self.is_recording:
-                data_ready.wait()
+                # A live input stream fires the callback roughly every frame
+                # (~30ms), even during silence. If nothing arrives for 3s the
+                # device isn't delivering audio (mic muted, wrong device, or the
+                # mic is held by another process) — bail out instead of hanging
+                # forever on 'recording'.
+                if not data_ready.wait(timeout=3.0):
+                    ConfigManager.console_print(
+                        'No audio received from the microphone for 3s — stopping. '
+                        'Check the selected sound device (Settings > Test microphone).'
+                    )
+                    return None
                 data_ready.clear()
 
                 if len(audio_buffer) < frame_size:

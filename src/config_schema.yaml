@@ -110,7 +110,7 @@ recording_options:
   sound_device:
     value: null
     type: str
-    description: "The numeric index of the sound device to use for recording. To find device numbers, run `python -m sounddevice`"
+    description: "The microphone to record from. Pick a specific input device from the dropdown, or leave on 'Default (system)' to follow Windows' default input. Use 'Test microphone' to confirm audio is actually arriving before saving."
   sample_rate:
     value: 16000
     type: int
