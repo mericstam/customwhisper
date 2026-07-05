@@ -108,9 +108,19 @@ class WhisperWriterApp(QObject):
 
     def exit_app(self):
         """
-        Exit the application.
+        Exit the application, shutting down every related CustomWhisper process.
+
+        Quitting Qt only ends this process; the wake-word listener and any stray
+        duplicate instances are separate processes, so kill them too before we go.
         """
         self.cleanup()
+        try:
+            from process_cleanup import kill_related_processes
+            killed = kill_related_processes()
+            if killed:
+                print(f'Exit: terminated related CustomWhisper processes {killed}.')
+        except Exception as e:
+            print(f'Exit: process cleanup failed: {e}')
         QApplication.quit()
 
     def restart_app(self):
