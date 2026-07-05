@@ -5,7 +5,7 @@ from dotenv import set_key, load_dotenv
 from PyQt5.QtWidgets import (
     QApplication, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox,
     QMessageBox, QTabWidget, QWidget, QSizePolicy, QSpacerItem, QToolButton, QStyle, QFileDialog,
-    QProgressBar
+    QProgressBar, QScrollArea, QFrame
 )
 from PyQt5.QtCore import Qt, QCoreApplication, QProcess, pyqtSignal, QTimer
 
@@ -54,6 +54,7 @@ class SettingsWindow(BaseWindow):
         self.main_layout.addWidget(self.tabs)
 
         self.create_tabs()
+        self.create_commands_tab()
         self.create_buttons()
 
         # Connect the use_api checkbox state change
@@ -81,6 +82,138 @@ class SettingsWindow(BaseWindow):
             else:
                 for key, meta in sub_settings.items():
                     self.add_setting_widget(layout, key, meta, category, sub_category)
+
+    def create_commands_tab(self):
+        """Build the 'Commands' tab: a phrase -> action editor for custom voice commands.
+
+        Unlike the other tabs, this content is not schema-driven — it's a
+        variable-length list stored in config under the 'custom_commands' key.
+        """
+        tab = QWidget()
+        layout = QVBoxLayout()
+        tab.setLayout(layout)
+        self.tabs.addTab(tab, 'Commands')
+
+        # Enable toggle
+        enable_row = QHBoxLayout()
+        self.commands_enabled_checkbox = QCheckBox('Enable custom voice commands')
+        self.commands_enabled_checkbox.setChecked(
+            bool(ConfigManager.get_config_value('custom_commands', 'enabled')
+                 if ConfigManager.get_config_value('custom_commands', 'enabled') is not None else True)
+        )
+        enable_row.addWidget(self.commands_enabled_checkbox)
+        enable_row.addStretch()
+        layout.addLayout(enable_row)
+
+        # Explanation
+        info = QLabel(
+            'Say a phrase during a dictation and run an action instead of typing it.\n'
+            'Example: phrase "open word", type "Open", target "winword".\n'
+            'Open resolves app names (winword, excel, msedge, notepad), file paths, and URLs.\n'
+            'Run executes a raw shell command line.'
+        )
+        info.setWordWrap(True)
+        info.setStyleSheet('color: gray;')
+        layout.addWidget(info)
+
+        # Column headers
+        header_row = QHBoxLayout()
+        for text, stretch in (('Phrase (what you say)', 3), ('Action', 0), ('Target (what to open/run)', 3), ('', 0)):
+            lbl = QLabel(text)
+            lbl.setStyleSheet('font-weight: bold;')
+            header_row.addWidget(lbl, stretch)
+        layout.addLayout(header_row)
+
+        # Scrollable area holding one row per command
+        self.command_rows = []
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        rows_container = QWidget()
+        self.commands_rows_layout = QVBoxLayout()
+        self.commands_rows_layout.setContentsMargins(0, 0, 0, 0)
+        self.commands_rows_layout.addStretch()  # keep rows top-aligned
+        rows_container.setLayout(self.commands_rows_layout)
+        scroll.setWidget(rows_container)
+        layout.addWidget(scroll)
+
+        # Add button
+        add_button = QPushButton('+ Add command')
+        add_button.clicked.connect(lambda: self._add_command_row())
+        layout.addWidget(add_button)
+
+        self._reload_command_rows()
+
+    def _add_command_row(self, phrase='', type_='open', target=''):
+        """Append an editable command row to the Commands tab."""
+        row_widget = QWidget()
+        row_layout = QHBoxLayout()
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_widget.setLayout(row_layout)
+
+        phrase_edit = QLineEdit(phrase)
+        phrase_edit.setPlaceholderText('open word')
+        type_combo = QComboBox()
+        type_combo.addItem('Open', 'open')
+        type_combo.addItem('Run', 'run')
+        idx = type_combo.findData(type_ if type_ in ('open', 'run') else 'open')
+        type_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        target_edit = QLineEdit(target)
+        target_edit.setPlaceholderText('winword')
+        remove_button = QPushButton('✕')
+        remove_button.setFixedWidth(30)
+        remove_button.setToolTip('Remove this command')
+        remove_button.clicked.connect(lambda: self._remove_command_row(row_widget))
+
+        row_layout.addWidget(phrase_edit, 3)
+        row_layout.addWidget(type_combo, 0)
+        row_layout.addWidget(target_edit, 3)
+        row_layout.addWidget(remove_button, 0)
+
+        # Insert before the trailing stretch so rows stay top-aligned.
+        self.commands_rows_layout.insertWidget(self.commands_rows_layout.count() - 1, row_widget)
+        self.command_rows.append({
+            'widget': row_widget,
+            'phrase': phrase_edit,
+            'type': type_combo,
+            'target': target_edit,
+        })
+
+    def _remove_command_row(self, row_widget):
+        """Remove a command row from the Commands tab."""
+        self.command_rows = [r for r in self.command_rows if r['widget'] is not row_widget]
+        self.commands_rows_layout.removeWidget(row_widget)
+        row_widget.deleteLater()
+
+    def _reload_command_rows(self):
+        """Rebuild the command rows from the current configuration."""
+        for row in list(self.command_rows):
+            self._remove_command_row(row['widget'])
+        self.command_rows = []
+        commands = ConfigManager.get_config_value('custom_commands', 'commands')
+        for cmd in (commands if isinstance(commands, list) else []):
+            self._add_command_row(
+                cmd.get('phrase', ''),
+                cmd.get('type', 'open'),
+                cmd.get('target', ''),
+            )
+
+    def _save_custom_commands(self):
+        """Collect the command rows and write them into the configuration."""
+        commands = []
+        for row in self.command_rows:
+            phrase = row['phrase'].text().strip()
+            target = row['target'].text().strip()
+            if not phrase and not target:
+                continue  # skip blank rows
+            commands.append({
+                'phrase': phrase,
+                'type': row['type'].currentData(),
+                'target': target,
+            })
+        ConfigManager.set_config_value(commands, 'custom_commands', 'commands')
+        ConfigManager.set_config_value(self.commands_enabled_checkbox.isChecked(),
+                                       'custom_commands', 'enabled')
 
     def create_buttons(self):
         """Create reset and save buttons."""
@@ -400,6 +533,7 @@ class SettingsWindow(BaseWindow):
         """Save the settings to the config file and .env file."""
         self._stop_mic_test(update_button=False)  # release the mic before the app restarts
         self.iterate_settings(self.save_setting)
+        self._save_custom_commands()
 
         # Save the API key to the .env file
         api_key = ConfigManager.get_config_value('model_options', 'api', 'api_key') or ''
@@ -425,6 +559,10 @@ class SettingsWindow(BaseWindow):
         """Reset the settings to the saved values."""
         ConfigManager.reload_config()
         self.update_widgets_from_config()
+        self._reload_command_rows()
+        if hasattr(self, 'commands_enabled_checkbox'):
+            enabled = ConfigManager.get_config_value('custom_commands', 'enabled')
+            self.commands_enabled_checkbox.setChecked(True if enabled is None else bool(enabled))
 
     def update_widgets_from_config(self):
         """Update all widgets with values from the current configuration."""
@@ -526,6 +664,7 @@ class SettingsWindow(BaseWindow):
         if reply == QMessageBox.Yes:
             ConfigManager.reload_config()  # Revert to last saved configuration
             self.update_widgets_from_config()
+            self._reload_command_rows()
             self.settings_closed.emit()
             super().closeEvent(event)
         else:

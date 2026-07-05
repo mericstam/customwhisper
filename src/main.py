@@ -186,12 +186,17 @@ class WhisperWriterApp(QObject):
 
     def on_transcription_complete(self, result):
         """
-        When the transcription is complete, type the result and start listening for the activation key again.
+        When the transcription is complete, run a matching custom command (e.g.
+        "open word") or type the result, then start listening again.
         """
-        self.input_simulator.typewrite(result)
+        from custom_commands import handle_transcription
+        handled = handle_transcription(result)
 
-        if ConfigManager.get_config_value('post_processing', 'press_enter_after'):
-            self.input_simulator.press_enter()
+        if not handled:
+            self.input_simulator.typewrite(result)
+
+            if ConfigManager.get_config_value('post_processing', 'press_enter_after'):
+                self.input_simulator.press_enter()
 
         if ConfigManager.get_config_value('misc', 'noise_on_completion'):
             AudioPlayer(os.path.join('assets', 'beep.wav')).play(block=True)
