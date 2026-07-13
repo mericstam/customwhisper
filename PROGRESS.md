@@ -1,16 +1,22 @@
-# Progress: macOS support via mlx-whisper
+# Progress: macOS and Linux (Ubuntu) support
 
-Working notes for adding Mac (Apple Silicon) support to CustomWhisper. Written on the Windows
-machine after an investigation session; work continues on the MacBook. Delete this file when the
-port is done.
+Working notes for porting CustomWhisper beyond Windows. Written on the Windows machine after an
+investigation session; macOS is verified on-device, Linux is code-complete pending on-device
+verification. Delete this file when both ports are done.
 
 ## Status
 
-- [x] Investigation complete (2026-07-13, on Windows)
-- [x] Milestone 1: mlx-whisper backend implemented + verified end-to-end on Apple Silicon
-- [~] Milestone 2: custom commands, process cleanup, launchers, installer, README done; wake
-  listener/Vosk ported but not yet verified live on-device; interactive hotkey→paste needs a human
-  with TCC permissions granted
+- [x] Investigation complete (2026-07-13, on Windows) — macOS via mlx-whisper, Linux via existing
+      faster-whisper/CUDA
+- [x] macOS milestone 1: mlx-whisper backend implemented + verified end-to-end on Apple Silicon
+- [~] macOS milestone 2: custom commands, process cleanup, launchers, installer, README done; wake
+      listener/Vosk ported and verified live on-device (see below)
+- [~] Ubuntu milestone 1: `python run.py` works on Ubuntu (Xorg session) — no backend change needed.
+      Code + packaging done (see "Linux (Ubuntu)" below); pending on-device verification.
+- [~] Ubuntu milestone 2: Wayland-proper setup (evdev + ydotool) + IPC wake trigger + install.sh.
+      IPC wake trigger + install.sh + launchers done; pending on-device verification.
+
+## macOS (Apple Silicon)
 
 ### Done on the Mac (2026-07-13)
 
@@ -95,6 +101,75 @@ Recommended config for one-shot dictation: `recording_mode: voice_activity_detec
   *continuous* mode while the hotkey stays one-shot, that needs per-source mode logic (not done).
 - `.app` launcher hardcodes the repo path at build time — re-run `install-mac.sh` if you move the repo.
 
+## Linux (Ubuntu)
+
+Linux is the easiest port: upstream WhisperWriter's Linux support is still in the fork —
+`key_listener.py` has an evdev backend, `input_simulation.py` supports ydotool/dotool, and both
+are already in `config_schema.yaml`. **No new transcription backend needed**: faster-whisper +
+CTranslate2 runs natively on Linux with CUDA.
+
+### Implemented (2026-07-14, code changes; unit-tested on WSL where no display/audio is needed)
+
+- `src/custom_commands.py` — the shared `_open_target()` already dispatches `xdg-open` on Linux
+  (landed with the macOS port).
+- `src/process_cleanup.py` — the shared POSIX branch already covers Linux (reads `/proc/<pid>/cwd`,
+  matches on script-name markers + cwd). No Linux-specific change needed.
+- `src/wake_ipc.py` (new) — dependency-free loopback-TCP IPC: `WakeTriggerServer` (run by the app)
+  + `send_trigger()` (called by the wake listener). Port advertised in `.cw_wake_port`. Verified the
+  full round-trip (deliver → callback → port-file cleanup → graceful no-server fallback).
+- `src/main.py` — starts `WakeTriggerServer` and routes it to `on_activation` via a `pyqtSignal`
+  (thread-safe), stops it in `cleanup()`. This is the fix for the Wayland/evdev "fake keystroke is
+  invisible" gotcha.
+- `wake_listener.py` — new `--trigger {auto,ipc,keystroke}` (default `auto`): tries IPC, falls back
+  to the pynput keystroke. Windows/macOS behaviour unchanged (IPC succeeds when the app is up).
+- `requirements-linux.txt` (new) — Windows list minus `pyreadline3`, plus `evdev` for the Wayland
+  input backend.
+- `install.sh`, `start-customwhisper.sh`, `start-hands-free.sh`, `stop-customwhisper.sh` (new) —
+  Linux equivalents of the `.pyw`/`install.ps1` flow. `.cw_wake_port` added to `.gitignore`.
+
+Not yet done (need a real Ubuntu box): pip install of the Linux requirements, apt system packages,
+CUDA cuDNN wiring, and the actual hotkey→record→transcribe→paste smoke test on X11 and Wayland.
+
+### X11 vs Wayland (the main decision)
+
+Recent Ubuntu (22.04+; 24.04 even with NVIDIA) defaults to GNOME on **Wayland**.
+
+- **Easy path — "Ubuntu on Xorg" session** (pick at login screen): pynput works for both the
+  global hotkey and typing; clipboard paste needs `xclip`; the hardcoded Ctrl+V is already
+  correct on Linux. Use this to get milestone 1 running with zero permission plumbing.
+- **Wayland-proper path**: pynput cannot listen globally. Use the existing **evdev** input
+  backend (`input_backend: evdev`, requires user in the `input` group:
+  `sudo usermod -aG input $USER` + re-login) and **ydotool** for typing (`ydotoold` daemon +
+  `/dev/uinput` udev permissions) or **dotool**. Clipboard needs `wl-clipboard`.
+
+### Wake-listener gotcha (fixed via IPC)
+
+`wake_listener.py` used to trigger dictation by simulating the activation hotkey with pynput's
+Controller. The evdev backend only sees real `/dev/input` events, so a pynput-synthesized keypress
+is invisible to it (and pynput's Controller may not work on Wayland at all). Fixed with a direct IPC
+trigger (`src/wake_ipc.py`, loopback TCP) that `main.py` listens on; the keystroke path stays as a
+fallback (`--trigger auto`).
+
+### Work items for Ubuntu
+
+1. [x] `requirements-linux.txt` — Windows list minus `pyreadline3`, plus `evdev`. Keeps
+   `openwakeword` + `vosk`. (The stale upstream UTF-16 `requirements.txt` is untouched for now —
+   still worth deleting/replacing later.)
+2. [ ] apt packages to document/install: `libportaudio2` (sounddevice), `libsndfile1` (soundfile),
+   `ffmpeg`, `xclip` (X11) or `wl-clipboard` + `ydotool` (Wayland), Qt xcb libs
+   (`libxcb-xinerama0` etc.), GStreamer plugins for `audioplayer` (or make the beep optional).
+   Documented in `install.sh`; not yet installed/verified on a real box.
+3. [ ] CUDA: needs cuBLAS + cuDNN 8 for ctranslate2 4.2.1 — `pip install nvidia-cublas-cu12
+   nvidia-cudnn-cu12==8.*` and put their lib dirs on `LD_LIBRARY_PATH` (or system CUDA install).
+   Documented in `install.sh`; not yet verified.
+4. [x] `src/custom_commands.py` 'open' → `xdg-open "<target>"` (shared `_open_target()` with macOS).
+5. [x] POSIX `process_cleanup.py` (script markers + cwd, spare self/ancestors) — shared with macOS.
+6. [x] `install.sh` + shell launchers (`start-customwhisper.sh`, `start-hands-free.sh`,
+   `stop-customwhisper.sh`). Optional `.desktop` autostart / systemd user unit for the wake
+   listener still TODO.
+7. [x] Wake trigger IPC change — `src/wake_ipc.py` + `main.py` server + `wake_listener.py
+   --trigger auto`. Nicer on all platforms; keystroke kept as fallback.
+
 ## Investigation findings
 
 ### Transcription backend (the easy part, ~half a day)
@@ -116,50 +191,27 @@ Recommended config for one-shot dictation: `recording_mode: voice_activity_detec
 - Performance: ~3x faster than whisper.cpp on Apple Silicon per the
   [mlx-examples whisper README](https://github.com/ml-explore/mlx-examples/tree/main/whisper).
 
-**Planned design:** add `model_options.local.backend: auto | faster_whisper | mlx_whisper` to
-`config_schema.yaml`; `auto` picks `mlx_whisper` on `sys.platform == 'darwin'`, `faster_whisper`
-elsewhere. Dispatch inside `create_local_model()` / `transcribe_local()`. Keep the existing
-`model` dropdown values and translate to HF repo names for mlx.
+### Windows-specific plumbing ported for both OSes
 
-### Windows-specific plumbing to port (the bulk of the work)
-
-1. **Paste simulation** — `src/input_simulation.py` `_paste_clipboard()` hardcodes **Ctrl+V**;
-   macOS needs **Cmd+V** (`PynputKey.cmd`). One-line platform switch. `pynput` and `pyperclip`
-   themselves work on macOS.
-2. **Custom "open" commands** — `src/custom_commands.py` `execute_command()` uses Windows shell
-   `start ""`; macOS equivalent is `open "<target>"`. Simple platform switch.
-3. **Process cleanup** — `src/process_cleanup.py` already no-ops off Windows (won't crash), but
-   Exit won't kill the wake listener on Mac. Needs a POSIX version (`pgrep -f <repo_root>` +
-   `kill`, or `psutil`).
-4. **Launchers/installer** — `.pyw` files, `pythonw`, and `install.ps1` are Windows-only. Mac
-   needs `.command` scripts or a shell script (optionally a launchd agent for the wake listener),
-   plus a `requirements-mac.txt`: drop `ctranslate2` / `faster-whisper` / `pyreadline3`, add
-   `mlx-whisper`.
-5. **macOS permissions (biggest UX hurdle)** — three TCC grants needed: **Microphone**,
-   **Accessibility** (simulated keystrokes), **Input Monitoring** (global hotkey via pynput).
-   Granted to whatever binary runs Python (e.g. Terminal/iTerm or the venv python). README /
-   install script must walk through System Settings > Privacy & Security.
-6. **PyQt5 on Apple Silicon (RISK — verify first)** — pinned `PyQt5-Qt5==5.15.2` has **no arm64
-   macOS wheel**. Bump to a `PyQt5-Qt5` release with universal2 wheels (5.15.11+) or migrate to
-   PyQt6. Check this before anything else on the Mac.
-7. **Wake word + Vosk** — `vosk` ships macOS arm64 wheels. `openwakeword` needs
-   `inference_framework='onnx'` on Apple Silicon (default tflite runtime unavailable). Both need
-   on-device verification.
-
-## Suggested order of work on the Mac
-
-1. Create venv (Python 3.11), try installing PyQt5 (risk #6) — decide PyQt5-bump vs PyQt6 early.
-2. Draft `requirements-mac.txt`; install `mlx-whisper`, `pynput`, `sounddevice`, `soundfile`,
-   `webrtcvad-wheels`, `pyperclip`, `openai`, `python-dotenv`, `PyYAML`, `audioplayer`.
-3. Implement the `backend` dispatch in `src/transcription.py` + schema entry (works standalone,
-   testable with a WAV file before touching the app).
-4. Platform-switch fixes: Cmd+V paste (#1), `open` command (#2).
-5. Run `python run.py`, grant TCC permissions, test hotkey → record → transcribe → paste.
-6. Then milestone 2: wake listener (openwakeword onnx), POSIX process cleanup, launch scripts,
-   README updates.
+1. **Paste simulation** — `src/input_simulation.py` `_paste_clipboard()` hardcoded **Ctrl+V**;
+   macOS needs **Cmd+V**. Done via `PASTE_MODIFIER` (Cmd on darwin, Ctrl on win/linux).
+2. **Custom "open" commands** — `_open_target()` dispatches `start` (win) / `open` (mac) /
+   `xdg-open` (linux).
+3. **Process cleanup** — POSIX version added (script markers + cwd; see the macOS gotcha above).
+4. **Launchers/installer** — macOS `.command` + `install-mac.sh`; Linux shell scripts + `install.sh`.
+5. **macOS permissions** — three TCC grants (Microphone / Accessibility / Input Monitoring); solved
+   by shipping a `.app` bundle so grants attach to CustomWhisper itself.
+6. **PyQt5 on Apple Silicon** — resolved: PyQt5 5.15.11 + Qt5 5.15.19 install on arm64, no PyQt6.
+7. **Wake word + Vosk** — `vosk` ships macOS arm64 wheels; `openwakeword` uses
+   `inference_framework='onnx'`.
 
 ## Notes
 
 - The Windows machine (NVIDIA/CUDA) stays on the faster-whisper backend — don't regress it.
   `requirements-win.txt` stays as-is.
-- App is a fork of WhisperWriter (GPL-3.0); upstream had no Mac support either.
+- Platform switches now cover three OSes: paste chord (Ctrl+V win/linux, Cmd+V mac), open
+  command (`start` win, `open` mac, `xdg-open` linux), process cleanup (PowerShell CIM win,
+  ps/kill posix).
+- App is a fork of WhisperWriter (GPL-3.0); upstream had Linux support but no Mac support.
+</content>
+</invoke>
