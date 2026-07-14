@@ -1,6 +1,23 @@
+import sys
+
 from PyQt5.QtCore import Qt, QRectF
 from PyQt5.QtGui import QPainter, QBrush, QColor, QFont, QPainterPath, QGuiApplication
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QMainWindow
+
+# The frameless window is painted with its own background. On Windows it's the
+# original semi-transparent white with dark text. On macOS that read as white-on-
+# white under dark mode, so use an opaque dark background with light text to match
+# the system dark appearance (see apply_macos_theme in main.py).
+if sys.platform == 'darwin':
+    BACKGROUND_COLOR = QColor(43, 43, 43, 255)
+    TITLE_TEXT_COLOR = '#e0e0e0'
+    CLOSE_BUTTON_COLOR = '#e0e0e0'
+    CLOSE_BUTTON_HOVER = '#ffffff'
+else:
+    BACKGROUND_COLOR = QColor(255, 255, 255, 220)
+    TITLE_TEXT_COLOR = '#404040'
+    CLOSE_BUTTON_COLOR = '#404040'
+    CLOSE_BUTTON_HOVER = '#000000'
 
 
 class BaseWindow(QMainWindow):
@@ -35,7 +52,7 @@ class BaseWindow(QMainWindow):
         title_label = QLabel('CustomWhisper')
         title_label.setFont(QFont('Segoe UI', 12, QFont.Bold))
         title_label.setAlignment(Qt.AlignCenter)
-        title_label.setStyleSheet("color: #404040;")
+        title_label.setStyleSheet(f"color: {TITLE_TEXT_COLOR};")
 
         # Create a widget for the close button
         close_button_widget = QWidget()
@@ -44,15 +61,15 @@ class BaseWindow(QMainWindow):
 
         close_button = QPushButton('×')
         close_button.setFixedSize(25, 25)
-        close_button.setStyleSheet("""
-            QPushButton {
+        close_button.setStyleSheet(f"""
+            QPushButton {{
                 background-color: transparent;
                 border: none;
-                color: #404040;
-            }
-            QPushButton:hover {
-                color: #000000;
-            }
+                color: {CLOSE_BUTTON_COLOR};
+            }}
+            QPushButton:hover {{
+                color: {CLOSE_BUTTON_HOVER};
+            }}
         """)
         close_button.clicked.connect(self.handleCloseButton)
 
@@ -112,6 +129,6 @@ class BaseWindow(QMainWindow):
         path.addRoundedRect(QRectF(self.rect()), 20, 20)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setBrush(QBrush(QColor(255, 255, 255, 220)))
+        painter.setBrush(QBrush(BACKGROUND_COLOR))
         painter.setPen(Qt.NoPen)
         painter.drawPath(path)

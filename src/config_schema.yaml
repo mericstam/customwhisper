@@ -35,8 +35,17 @@ model_options:
       type: str
       description: "Your API key for the OpenAI API. Required for non-local API usage."
 
-  # Configuration options for the faster-whisper model
+  # Configuration options for the local model (faster-whisper on Windows/Linux,
+  # mlx-whisper on Apple Silicon macOS)
   local:
+    backend:
+      value: auto
+      type: str
+      description: "The local transcription backend. 'auto' uses mlx-whisper on Apple Silicon macOS and faster-whisper elsewhere. 'faster_whisper' (NVIDIA/CPU) and 'mlx_whisper' (Apple Silicon) force a specific one."
+      options:
+        - auto
+        - faster_whisper
+        - mlx_whisper
     model:
       value: base
       type: str
@@ -57,7 +66,7 @@ model_options:
     device:
       value: auto
       type: str
-      description: "The device to run the local Whisper model on. Use 'cuda' for NVIDIA GPUs, 'cpu' for CPU-only processing, or 'auto' to let the system automatically choose the best available device."
+      description: "The device to run the local Whisper model on (faster-whisper only; ignored by the mlx-whisper backend, which always uses the Apple Silicon Metal GPU). Use 'cuda' for NVIDIA GPUs, 'cpu' for CPU-only processing, or 'auto' to let the system automatically choose the best available device."
       options:
         - auto
         - cuda
@@ -65,7 +74,7 @@ model_options:
     compute_type:
       value: default
       type: str
-      description: "The compute type to use for the local Whisper model."
+      description: "The compute type to use for the local Whisper model (faster-whisper only; ignored by the mlx-whisper backend)."
       options:
         - default
         - float32
@@ -78,7 +87,7 @@ model_options:
     vad_filter:
       value: false
       type: bool
-      description: "Set to true to use a voice activity detection (VAD) filter to remove silence from the recording."
+      description: "Set to true to use a voice activity detection (VAD) filter to remove silence from the recording (faster-whisper only; ignored by the mlx-whisper backend, which relies on the app's own webrtcvad silence detection)."
     model_path:
       value: null
       type: str
@@ -174,6 +183,15 @@ misc:
     value: false
     type: bool
     description: "Set to true to play a noise after the transcription has been typed out."
+
+# "Hey Jarvis" wake word (openWakeWord). On macOS it runs inside the app (started with the hotkey
+# listener via the Start button) so it shares the app's mic/accessibility permissions; on Windows use
+# the "Start Hands-Free" launcher.
+wake_word:
+  enabled:
+    value: true
+    type: bool
+    description: "Enable the 'Hey Jarvis' wake word to start a dictation hands-free, in addition to the activation hotkey."
 
 # In-dictation voice commands (require Vosk). Say e.g. "Jarvis session hold/start/stop".
 voice_commands:
