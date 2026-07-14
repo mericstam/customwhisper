@@ -138,3 +138,6 @@ wake_err.txt
 
 # Launcher runtime PID file
 .cw_pids
+
+# Generated macOS app bundle (built by install-mac.sh)
+CustomWhisper.app/

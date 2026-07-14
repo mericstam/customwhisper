@@ -10,15 +10,31 @@ Commands are stored in config.yaml under the top-level 'custom_commands' key as
 a list of dicts: {"phrase": str, "type": "open"|"run", "target": str}.
 
 Action types:
-  open  -- open an app, file, or URL. Uses the Windows shell 'start', which
-           resolves registered app names (winword, excel, msedge, notepad),
-           file paths, and URLs alike.
+  open  -- open an app, file, or URL using the host platform's opener (macOS
+           'open', Windows shell 'start', Linux 'xdg-open'), which resolves app
+           names, file paths, and URLs.
   run   -- run a raw shell command line.
 """
 import os
 import subprocess
+import sys
 
 from utils import ConfigManager
+
+
+def _open_target(target):
+    """
+    Launch an app/file/URL the way the host platform expects:
+      macOS   -> open "<target>"        (resolves .app names, files, URLs)
+      Windows -> start "" "<target>"    (resolves registered app names, files, URLs)
+      Linux   -> xdg-open "<target>"    (files, URLs; not app names)
+    """
+    if sys.platform == 'darwin':
+        subprocess.Popen(['open', target])
+    elif sys.platform.startswith('win'):
+        subprocess.Popen(f'start "" "{target}"', shell=True)
+    else:
+        subprocess.Popen(['xdg-open', target])
 
 
 def _normalize(text):
@@ -66,8 +82,8 @@ def execute_command(cmd):
     try:
         if action == 'run':
             subprocess.Popen(target, shell=True)
-        else:  # 'open' (default): let the Windows shell resolve app names, files, URLs
-            subprocess.Popen(f'start "" "{target}"', shell=True)
+        else:  # 'open' (default): let the host platform resolve app names, files, URLs
+            _open_target(target)
         ConfigManager.console_print(f"Custom command: '{cmd.get('phrase')}' -> {action} '{target}'.")
         return True
     except Exception as e:

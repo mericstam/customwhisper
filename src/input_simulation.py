@@ -1,10 +1,14 @@
 import subprocess
 import os
 import signal
+import sys
 import time
 from pynput.keyboard import Controller as PynputController, Key as PynputKey
 
 from utils import ConfigManager
+
+# The clipboard-paste shortcut is Cmd+V on macOS and Ctrl+V everywhere else.
+PASTE_MODIFIER = PynputKey.cmd if sys.platform == 'darwin' else PynputKey.ctrl
 
 def run_command_or_exit_on_failure(command):
     """
@@ -71,8 +75,9 @@ class InputSimulator:
 
     def _paste_clipboard(self, text):
         """
-        Paste the given text via the system clipboard (Ctrl+V).
-        Instant and immune to per-keystroke drops. Restores prior clipboard.
+        Paste the given text via the system clipboard (Cmd+V on macOS, Ctrl+V
+        elsewhere). Instant and immune to per-keystroke drops. Restores prior
+        clipboard.
         """
         import pyperclip
         try:
@@ -81,7 +86,7 @@ class InputSimulator:
             previous = None
         pyperclip.copy(text)
         time.sleep(0.05)
-        with self.keyboard.pressed(PynputKey.ctrl):
+        with self.keyboard.pressed(PASTE_MODIFIER):
             self.keyboard.press('v')
             self.keyboard.release('v')
         time.sleep(0.1)

@@ -229,8 +229,28 @@ class SettingsWindow(BaseWindow):
         save_button.clicked.connect(self.save_settings)
         self.main_layout.addWidget(save_button)
 
+    def _is_field_hidden_for_backend(self, category, sub_category, key):
+        """Hide faster-whisper-only fields when the mlx backend is active (macOS).
+
+        device / compute_type / vad_filter only affect faster-whisper. mlx-whisper
+        always runs on the Apple Silicon Metal GPU, so exposing cuda/cpu, float16,
+        and vad choices there would be misleading (and they're ignored anyway).
+        """
+        if category == 'model_options' and sub_category == 'local' \
+                and key in ('device', 'compute_type', 'vad_filter'):
+            try:
+                from transcription import resolve_backend
+                local_opts = ConfigManager.get_config_section('model_options')['local']
+                return resolve_backend(local_opts) == 'mlx_whisper'
+            except Exception:
+                return False
+        return False
+
     def add_setting_widget(self, layout, key, meta, category, sub_category=None):
         """Add a setting widget to the layout."""
+        if self._is_field_hidden_for_backend(category, sub_category, key):
+            return
+
         item_layout = QHBoxLayout()
         label = QLabel(f"{key.replace('_', ' ').capitalize()}:")
         label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)

@@ -1,9 +1,11 @@
 # <img src="./assets/ww-logo.png" alt="logo" width="25" height="25"> CustomWhisper
 
-A hands-free, voice-controlled speech-to-text tool for Windows. Built on a customized fork of
-[WhisperWriter](https://github.com/savbell/whisper-writer), it transcribes your microphone straight
-into the active window using a local [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
-model (or the OpenAI API).
+A hands-free, voice-controlled speech-to-text tool for Windows and macOS (Apple Silicon). Built on a
+customized fork of [WhisperWriter](https://github.com/savbell/whisper-writer), it transcribes your
+microphone straight into the active window using a local Whisper model
+([faster-whisper](https://github.com/SYSTRAN/faster-whisper) on Windows/NVIDIA,
+[mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) on Apple Silicon) or the
+OpenAI API.
 
 > **Based on [WhisperWriter](https://github.com/savbell/whisper-writer) by savbell, licensed under
 > GPL-3.0. This is a modified version.** Because the upstream project is GPL-3.0 (copyleft), this
@@ -53,8 +55,8 @@ After a dictation is transcribed, the text is matched (case- and punctuation-ins
 list of phrase → action mappings you configure in **Settings > Commands** (`src/custom_commands.py`).
 On a match, the action runs *instead* of the text being typed. Two action types:
 
-- **`open`** — open an app, file, or URL via the Windows shell `start` (resolves registered app names
-  like `winword`, `excel`, `msedge`, `notepad`, as well as paths and URLs).
+- **`open`** — open an app, file, or URL via the host platform's opener (macOS `open`, Windows shell
+  `start`, Linux `xdg-open`), which resolves app names, paths, and URLs.
 - **`run`** — run a raw shell command line.
 
 Mappings are stored in `config.yaml` under the top-level `custom_commands` key. For example, saying
@@ -72,21 +74,26 @@ Set via `recording_mode` in the config:
 ## Project layout
 
 ```
-install.ps1                  # one-shot installer: venv + deps + desktop shortcut
+install.ps1                  # Windows installer: venv + deps + desktop shortcut
+install-mac.sh               # macOS installer: venv + deps + builds CustomWhisper.app
 run.py                       # entry point -> launches src/main.py
 wake_listener.py             # "Hey Jarvis" wake-word listener (openWakeWord)
-_launcher.py                 # shared windowless launch/stop helper (pythonw)
-Start Hands-Free.pyw         # double-click: app + wake listener, no console windows
-Start CustomWhisper.pyw      # double-click: app only (hotkey, no wake word)
-Stop CustomWhisper.pyw       # double-click: stop the app and the listener
+_launcher.py                 # shared windowless launch/stop helper (pythonw, Windows)
+Start Hands-Free.pyw         # Windows: double-click app + wake listener, no console windows
+Start CustomWhisper.pyw      # Windows: double-click app only (hotkey, no wake word)
+Stop CustomWhisper.pyw       # Windows: double-click to stop the app and the listener
+CustomWhisper.app            # macOS: the app bundle (built by install-mac.sh); the wake
+                             #   word runs in-app, started with the Start button
+Start CustomWhisper.command  # macOS: launch the app from a terminal (see live logs)
+Stop CustomWhisper.command   # macOS: stop the app and the listener
 src/
   main.py                    # app, system tray, orchestration
   key_listener.py            # global hotkey detection (pynput / evdev backends)
   result_thread.py           # records audio, runs VAD + voice commands, transcribes
   command_recognizer.py      # in-dictation Vosk command recognizer ("Jarvis ...")
   custom_commands.py         # post-dictation phrase -> launch app / run command
-  process_cleanup.py         # kill related CustomWhisper processes on exit
-  transcription.py           # local faster-whisper or OpenAI API transcription
+  process_cleanup.py         # kill related CustomWhisper processes on exit (Windows + POSIX)
+  transcription.py           # local transcription (faster-whisper / mlx-whisper) or OpenAI API
   input_simulation.py        # types/pastes the result (pynput / clipboard / dotool)
   utils.py                   # ConfigManager (YAML config + schema)
   config_schema.yaml         # defaults + descriptions for every setting
@@ -99,7 +106,10 @@ assets/                      # icons, beep sound, demo gifs
 
 ### Prerequisites
 - Python `3.11`
-- For GPU transcription: an NVIDIA GPU with CUDA 12 (cuBLAS + cuDNN 8). Falls back to CPU automatically.
+- **Windows:** for GPU transcription, an NVIDIA GPU with CUDA 12 (cuBLAS + cuDNN 8). Falls back to CPU
+  automatically.
+- **macOS:** Apple Silicon (M1 or newer). Transcription runs on the Metal GPU via mlx-whisper — no
+  extra setup. Install Python 3.11 with `brew install python@3.11` if you don't have it.
 
 ### Install (Windows)
 
@@ -125,15 +135,57 @@ pip install -r requirements-win.txt
 (`openwakeword`, `vosk`, `audioplayer`, `pyperclip`).
 </details>
 
+### Install (macOS, Apple Silicon)
+
+Run the installer from the repo root — it creates the venv and installs the Mac dependency set
+(mlx-whisper backend + PyQt5 UI). It's idempotent, so it's safe to re-run.
+
+```bash
+./install-mac.sh
+```
+
+<details>
+<summary>Manual install</summary>
+
+```bash
+python3.11 -m venv venv
+source venv/bin/activate
+pip install -r requirements-mac.txt
+```
+
+`requirements-mac.txt` is the pinned, Apple-Silicon set: it swaps faster-whisper/ctranslate2 for
+`mlx-whisper` and keeps the custom-feature deps (`openwakeword`, `vosk`, `audioplayer`, `pyperclip`).
+</details>
+
+**macOS permissions.** The first time you run CustomWhisper, macOS prompts for three privacy grants.
+Open **System Settings > Privacy & Security** and grant your terminal app (Terminal or iTerm) — or the
+venv `python` — access under:
+
+1. **Microphone** — to record your voice.
+2. **Accessibility** — to paste/type the transcription into the active app.
+3. **Input Monitoring** — to detect the global activation hotkey.
+
+Until all three are granted, recording, pasting, or the hotkey (respectively) will silently do nothing.
+
+> **Important:** macOS only applies a newly-granted Accessibility / Input Monitoring
+> permission to *newly-started* processes. After granting them to your terminal app, **fully quit and
+> reopen the terminal** (and relaunch CustomWhisper) — otherwise the hotkey still won't be detected
+> even though the permission shows as granted. If you launch via the `.command` files from Finder, the
+> responsible app is your terminal, so grant the permissions to Terminal/iTerm.
+
 ### Run
 
-Launchers run windowless via `pythonw` — no console windows. The app lives in the system tray.
+The app lives in the system tray. Press **Start** in its window to begin listening for the activation
+hotkey; that also starts the "Hey Jarvis" wake word (unless `wake_word.enabled` is off). Say **"Hey
+Jarvis"** or tap the hotkey to dictate.
 
-- **Hands-free (app + wake word):** double-click `Start Hands-Free.pyw`, then say **"Hey Jarvis"** to
-  dictate (or tap **Right-Ctrl + Space**).
-- **App only (hotkey, no wake word):** double-click `Start CustomWhisper.pyw` (or run `python run.py`
-  from a terminal if you want to see logs live).
-- **Stop everything:** double-click `Stop CustomWhisper.pyw`.
+- **macOS:** launch **`CustomWhisper.app`** (double-click in Finder, or `open CustomWhisper.app`). This
+  gives the app its own identity for the privacy permissions — see [Install (macOS)](#install-macos-apple-silicon).
+  `Start CustomWhisper.command` runs it from a terminal instead (handy for live logs); the wake word
+  runs inside the app either way.
+- **Windows:** double-click `Start Hands-Free.pyw` (app + wake listener) or `Start CustomWhisper.pyw`
+  (hotkey only); these run windowless via `pythonw`.
+- **Stop everything:** `Stop CustomWhisper.pyw` (Windows) / `Stop CustomWhisper.command` (macOS).
 
 Output is written to `app_out.txt` / `wake_out.txt` for troubleshooting. On first run, a Settings
 window opens — configure and save, then press **Start** to activate the listener.
@@ -144,8 +196,11 @@ Settings live in `src/config.yaml` (created on first save; git-ignored). Every o
 description are defined in `src/config_schema.yaml`. Edit through the Settings window or the file
 directly. Highlights:
 
-- **`model_options.local`** — `model` (e.g. `large-v3`), `device` (`cuda`/`cpu`/`auto`),
-  `compute_type` (e.g. `float16`), `vad_filter`.
+- **`model_options.local`** — `backend` (`auto`/`faster_whisper`/`mlx_whisper`; `auto` picks
+  mlx-whisper on Apple Silicon and faster-whisper elsewhere), `model` (e.g. `large-v3`), `device`
+  (`cuda`/`cpu`/`auto`, faster-whisper only), `compute_type` (e.g. `float16`, faster-whisper only),
+  `vad_filter`. On macOS the model name maps to the matching `mlx-community/whisper-<model>-mlx` repo,
+  downloaded on first use; `device`/`compute_type` are ignored (always the Metal GPU).
 - **`model_options.common.initial_prompt`** — a vocabulary hint to bias transcription toward your
   domain terms.
 - **`recording_options`** — `activation_key`, `recording_mode`, `silence_duration`, `sample_rate`.
@@ -179,7 +234,12 @@ This project modifies [WhisperWriter](https://github.com/savbell/whisper-writer)
   silent-mic timeout so a muted or busy device no longer hangs the recording loop
   (`src/result_thread.py`).
 - **Full process cleanup on exit** (`src/process_cleanup.py`) — quitting the app also stops the
-  hands-free wake-word listener and any stray CustomWhisper processes holding the microphone.
+  hands-free wake-word listener and any stray CustomWhisper processes holding the microphone (Windows
+  via PowerShell/taskkill, macOS/Linux via `ps`/cwd matching).
+- **macOS (Apple Silicon) support** — an [mlx-whisper](https://github.com/ml-explore/mlx-examples)
+  transcription backend selected automatically on Apple Silicon (`src/transcription.py`), Cmd+V
+  clipboard paste, `open`-based app-launch commands, `.command` launchers, and `install-mac.sh`.
+  Upstream WhisperWriter is Windows/Linux-only.
 
 ## Credits & licenses
 
@@ -188,7 +248,8 @@ project is distributed under the same license; see [LICENSE](./LICENSE).
 
 Built with these open-source projects (installed as dependencies, not bundled):
 
-- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — transcription (MIT)
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — transcription, Windows/NVIDIA (MIT)
+- [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) — transcription, Apple Silicon (MIT)
 - [openWakeWord](https://github.com/dscripka/openWakeWord) — wake word (Apache-2.0)
 - [Vosk](https://github.com/alphacep/vosk-api) — voice commands (Apache-2.0)
 - [PyQt5](https://www.riverbankcomputing.com/software/pyqt/) — UI (GPL-3.0 / commercial)

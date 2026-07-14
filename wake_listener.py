@@ -12,6 +12,7 @@ prefers the WASAPI backend (shared mode) so it can coexist with the app.
 
 Run this ALONGSIDE WhisperWriter (run.py). See "Start Hands-Free.bat".
 """
+import os
 import sys
 import time
 import argparse
@@ -24,6 +25,45 @@ from openwakeword.model import Model
 
 SAMPLE_RATE = 16000
 FRAME = 1280  # 80 ms at 16 kHz (openWakeWord's expected chunk size)
+
+# Map activation-key tokens (as written in config's recording_options.activation_key)
+# to pynput keys, so the wake word triggers the SAME hotkey the app listens for.
+_MODMAP = {
+    'ctrl': Key.ctrl, 'control': Key.ctrl,
+    'shift': Key.shift,
+    'alt': Key.alt, 'option': Key.alt,
+    'cmd': Key.cmd, 'command': Key.cmd, 'super': Key.cmd, 'win': Key.cmd,
+    'space': Key.space, 'enter': Key.enter, 'return': Key.enter,
+    'tab': Key.tab, 'esc': Key.esc, 'escape': Key.esc,
+}
+
+
+def load_activation_keys():
+    """Read recording_options.activation_key from config and parse it into a list
+    of pynput keys. Falls back to Ctrl+Space if the config can't be read."""
+    key_str = 'ctrl+space'
+    try:
+        import yaml
+        here = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(here, 'src', 'config.yaml')) as f:
+            cfg = yaml.safe_load(f)
+        key_str = (cfg.get('recording_options', {}).get('activation_key')
+                   or key_str)
+    except Exception as e:
+        print(f"  (couldn't read activation_key from config, using ctrl+space: {e})", flush=True)
+
+    keys = []
+    for tok in str(key_str).lower().split('+'):
+        tok = tok.strip()
+        if not tok:
+            continue
+        if tok in _MODMAP:
+            keys.append(_MODMAP[tok])
+        elif len(tok) == 1:
+            keys.append(tok)  # a literal character key
+        else:
+            keys.append(getattr(Key, tok, tok))
+    return keys or [Key.ctrl, Key.space], key_str
 
 
 def pick_wasapi_input():
@@ -65,12 +105,15 @@ def main():
     model = Model(wakeword_models=[args.wakeword], inference_framework=args.framework)
 
     kb = Controller()
+    activation_keys, activation_str = load_activation_keys()
+    print(f"Wake word will trigger the activation hotkey: {activation_str}", flush=True)
 
     def trigger():
-        kb.press(Key.ctrl_r)
-        kb.press(Key.space)
-        kb.release(Key.space)
-        kb.release(Key.ctrl_r)
+        # Press the configured combo (modifiers first), then release in reverse.
+        for k in activation_keys:
+            kb.press(k)
+        for k in reversed(activation_keys):
+            kb.release(k)
 
     # MME (default) accepts 16 kHz and coexists at idle; the recovery loop below
     # handles the brief contention while WhisperWriter records a dictation.

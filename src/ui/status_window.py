@@ -1,5 +1,6 @@
 import sys
 import os
+from ctypes import c_void_p
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot, QTimer
 from PyQt5.QtGui import QFont, QPixmap, QIcon
 from PyQt5.QtWidgets import QApplication, QLabel, QHBoxLayout
@@ -23,8 +24,17 @@ class StatusWindow(BaseWindow):
         """
         Initialize the status user interface.
         """
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
-        
+        # On macOS a Qt.Tool window is automatically hidden whenever the app is
+        # not the active app — so the moment you click into the app you're
+        # dictating into, the status overlay disappears. Use flags that keep it
+        # visible without stealing focus instead. Windows/Linux keep Qt.Tool.
+        if sys.platform == 'darwin':
+            self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint |
+                                Qt.WindowDoesNotAcceptFocus)
+            self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+        else:
+            self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+
         status_layout = QHBoxLayout()
         status_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -63,7 +73,36 @@ class StatusWindow(BaseWindow):
 
         self.move(x, y)
         super().show()
-        
+        self._apply_macos_overlay_behavior()
+
+    def _apply_macos_overlay_behavior(self):
+        """Make the overlay float above other apps and appear on every Space.
+
+        With Qt.Tool removed (so the window survives app deactivation on macOS),
+        raise the native NSWindow to a high level and let it join all Spaces, so
+        the recording/transcribing status stays visible over whatever app you're
+        dictating into. Best-effort; a no-op if AppKit isn't available.
+        """
+        if sys.platform != 'darwin':
+            return
+        try:
+            import objc
+            from AppKit import (
+                NSStatusWindowLevel,
+                NSWindowCollectionBehaviorCanJoinAllSpaces,
+                NSWindowCollectionBehaviorStationary,
+                NSWindowCollectionBehaviorFullScreenAuxiliary,
+            )
+            nswindow = objc.objc_object(c_void_p=int(self.winId())).window()
+            nswindow.setLevel_(NSStatusWindowLevel)
+            nswindow.setCollectionBehavior_(
+                NSWindowCollectionBehaviorCanJoinAllSpaces
+                | NSWindowCollectionBehaviorStationary
+                | NSWindowCollectionBehaviorFullScreenAuxiliary
+            )
+        except Exception:
+            pass
+
     def closeEvent(self, event):
         """
         Emit the close signal when the window is closed.
