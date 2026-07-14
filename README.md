@@ -1,6 +1,7 @@
 # <img src="./assets/ww-logo.png" alt="logo" width="25" height="25"> CustomWhisper
 
-A hands-free, voice-controlled speech-to-text tool for Windows and macOS (Apple Silicon). Built on a
+A hands-free, voice-controlled speech-to-text tool for Windows and macOS (Apple Silicon), with Linux
+support in progress. Built on a
 customized fork of [WhisperWriter](https://github.com/savbell/whisper-writer), it transcribes your
 microphone straight into the active window using a local Whisper model
 ([faster-whisper](https://github.com/SYSTRAN/faster-whisper) on Windows/NVIDIA,
@@ -30,8 +31,10 @@ The app has two cooperating processes (both launched by `Start Hands-Free.pyw`):
    activation hotkey (`Right-Ctrl + Space` by default), records, transcribes, and writes the result
    into the focused window.
 2. **`wake_listener.py`** — an always-on, fully local wake-word listener (openWakeWord). When it hears
-   "Hey Jarvis", it simulates the activation hotkey to kick off a dictation. It coexists with the app
-   and auto-recovers if the mic is briefly grabbed during a dictation.
+   "Hey Jarvis", it kicks off a dictation — by default over local IPC (`src/wake_ipc.py`), falling back
+   to simulating the activation hotkey. (IPC is required on the Linux/Wayland `evdev` input path, where
+   a synthesized keystroke is invisible to the backend.) It coexists with the app and auto-recovers if
+   the mic is briefly grabbed during a dictation.
 
 While recording, an optional **voice-command recognizer** (`src/command_recognizer.py`, using Vosk
 with a constrained grammar) listens for command phrases and acts on them, trimming the spoken command
@@ -76,6 +79,7 @@ Set via `recording_mode` in the config:
 ```
 install.ps1                  # Windows installer: venv + deps + desktop shortcut
 install-mac.sh               # macOS installer: venv + deps + builds CustomWhisper.app
+install.sh                   # Linux installer: venv + deps + apt/permission guidance
 run.py                       # entry point -> launches src/main.py
 wake_listener.py             # "Hey Jarvis" wake-word listener (openWakeWord)
 _launcher.py                 # shared windowless launch/stop helper (pythonw, Windows)
@@ -86,6 +90,9 @@ CustomWhisper.app            # macOS: the app bundle (built by install-mac.sh); 
                              #   word runs in-app, started with the Start button
 Start CustomWhisper.command  # macOS: launch the app from a terminal (see live logs)
 Stop CustomWhisper.command   # macOS: stop the app and the listener
+start-hands-free.sh          # Linux: app + wake listener
+start-customwhisper.sh       # Linux: app only (hotkey, no wake word)
+stop-customwhisper.sh        # Linux: stop the app and the listener
 src/
   main.py                    # app, system tray, orchestration
   key_listener.py            # global hotkey detection (pynput / evdev backends)
@@ -93,6 +100,7 @@ src/
   command_recognizer.py      # in-dictation Vosk command recognizer ("Jarvis ...")
   custom_commands.py         # post-dictation phrase -> launch app / run command
   process_cleanup.py         # kill related CustomWhisper processes on exit (Windows + POSIX)
+  wake_ipc.py                # local IPC so the wake listener can trigger a dictation
   transcription.py           # local transcription (faster-whisper / mlx-whisper) or OpenAI API
   input_simulation.py        # types/pastes the result (pynput / clipboard / dotool)
   utils.py                   # ConfigManager (YAML config + schema)
@@ -110,6 +118,8 @@ assets/                      # icons, beep sound, demo gifs
   automatically.
 - **macOS:** Apple Silicon (M1 or newer). Transcription runs on the Metal GPU via mlx-whisper — no
   extra setup. Install Python 3.11 with `brew install python@3.11` if you don't have it.
+- **Linux:** Ubuntu 22.04+ (X11 or Wayland). For GPU transcription, an NVIDIA GPU with CUDA 12
+  (cuBLAS + cuDNN 8); falls back to CPU. Plus a few apt packages — see [Install (Linux)](#install-linux-ubuntu-2204).
 
 ### Install (Windows)
 
@@ -173,6 +183,37 @@ Until all three are granted, recording, pasting, or the hotkey (respectively) wi
 > even though the permission shows as granted. If you launch via the `.command` files from Finder, the
 > responsible app is your terminal, so grant the permissions to Terminal/iTerm.
 
+### Install (Linux, Ubuntu 22.04+)
+
+> Linux support is code-complete but still being verified on hardware — see `PROGRESS.md`. No
+> transcription-backend change is needed: faster-whisper + CTranslate2 run natively on Linux with CUDA.
+
+```bash
+./install.sh
+```
+
+It creates the venv, installs `requirements-linux.txt`, and prints the remaining **apt** packages and
+permission steps (they can't be done by pip). In short:
+
+```bash
+sudo apt install -y libportaudio2 libsndfile1 ffmpeg libxcb-xinerama0 libxcb-cursor0
+# X11 session:      sudo apt install -y xclip
+# Wayland session:  sudo apt install -y wl-clipboard ydotool
+```
+
+**Choosing the input path:**
+
+- **Easiest — an "Ubuntu on Xorg" session** (pick it at the login screen): leave
+  `recording_options.input_backend` on `pynput` and use `post_processing.input_method: clipboard`
+  (needs `xclip`). No extra permissions.
+- **Wayland session:** set `input_backend: evdev` and add yourself to the `input` group
+  (`sudo usermod -aG input "$USER"`, then re-login). For typing, set `input_method: ydotool` and run
+  the `ydotoold` daemon with access to `/dev/uinput`. The wake listener's default `--trigger auto`
+  pokes the app over local IPC instead of faking a keystroke (which the evdev backend can't see).
+
+For an NVIDIA GPU, also `pip install nvidia-cublas-cu12 'nvidia-cudnn-cu12==8.*'` and put their lib
+dirs on `LD_LIBRARY_PATH` (or use a system CUDA install).
+
 ### Run
 
 The app lives in the system tray. Press **Start** in its window to begin listening for the activation
@@ -185,7 +226,9 @@ Jarvis"** or tap the hotkey to dictate.
   runs inside the app either way.
 - **Windows:** double-click `Start Hands-Free.pyw` (app + wake listener) or `Start CustomWhisper.pyw`
   (hotkey only); these run windowless via `pythonw`.
-- **Stop everything:** `Stop CustomWhisper.pyw` (Windows) / `Stop CustomWhisper.command` (macOS).
+- **Linux:** `./start-hands-free.sh` (app + wake listener) or `./start-customwhisper.sh` (hotkey only).
+- **Stop everything:** `Stop CustomWhisper.pyw` (Windows) / `Stop CustomWhisper.command` (macOS) /
+  `./stop-customwhisper.sh` (Linux).
 
 Output is written to `app_out.txt` / `wake_out.txt` for troubleshooting. On first run, a Settings
 window opens — configure and save, then press **Start** to activate the listener.

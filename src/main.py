@@ -3,7 +3,7 @@ import sys
 import time
 from audioplayer import AudioPlayer
 from pynput.keyboard import Controller
-from PyQt5.QtCore import QObject, QProcess
+from PyQt5.QtCore import QObject, QProcess, pyqtSignal
 from PyQt5.QtGui import QIcon, QPalette, QColor
 from PyQt5.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QAction, QMessageBox
 
@@ -85,11 +85,16 @@ from utils import ConfigManager
 
 
 class WhisperWriterApp(QObject):
+    # Emitted (from the wake-listener IPC thread) to start a dictation on the
+    # GUI thread, exactly as pressing the activation hotkey would.
+    wakeTriggered = pyqtSignal()
+
     def __init__(self):
         """
         Initialize the application, opening settings window if no configuration file is found.
         """
         super().__init__()
+        self.wake_server = None
         self.app = QApplication(sys.argv)
         self.app.setWindowIcon(QIcon(os.path.join('assets', 'ww-logo-custom.png')))
         # Tray-resident app: don't quit when the last window closes (e.g. the
@@ -127,6 +132,17 @@ class WhisperWriterApp(QObject):
         self.key_listener = KeyListener()
         self.key_listener.add_callback("on_activate", self.on_activation)
         self.key_listener.add_callback("on_deactivate", self.on_deactivation)
+
+        # Let the hands-free wake listener start a dictation over local IPC
+        # instead of faking a keystroke (the fake keystroke is invisible to the
+        # evdev backend on Wayland). The keystroke path stays as a fallback.
+        self.wakeTriggered.connect(self.on_activation)
+        try:
+            from wake_ipc import WakeTriggerServer
+            self.wake_server = WakeTriggerServer(self.wakeTriggered.emit)
+            self.wake_server.start()
+        except Exception as e:
+            print(f'Wake IPC server not started: {e}')
 
         model_options = ConfigManager.get_config_section('model_options')
         model_path = model_options.get('local', {}).get('model_path')
@@ -231,6 +247,10 @@ class WhisperWriterApp(QObject):
         # These components only exist once initialize_components() has run. On
         # first launch the Settings window can be saved (triggering a restart)
         # before that happens, so guard against the attributes being absent.
+        wake_server = getattr(self, 'wake_server', None)
+        if wake_server:
+            wake_server.stop()
+            self.wake_server = None
         key_listener = getattr(self, 'key_listener', None)
         if key_listener:
             key_listener.stop()

@@ -2,9 +2,12 @@
 Always-on wake-word listener for WhisperWriter.
 
 Listens to the microphone for a wake phrase (default: "Hey Jarvis") using
-openWakeWord (fully local). On detection, it simulates the WhisperWriter
-activation hotkey (Right-Ctrl + Space), which starts a dictation in
-voice_activity_detection mode (records until you stop speaking).
+openWakeWord (fully local). On detection, it starts a dictation in the running
+app. Two trigger paths (see --trigger):
+  ipc        poke the app over local IPC (works with the Wayland/evdev backend,
+             where a synthesized keystroke would be invisible).
+  keystroke  simulate the configured activation hotkey with pynput.
+  auto       (default) try IPC, fall back to the keystroke.
 
 Robust against the mic being briefly grabbed by WhisperWriter during a
 dictation: it auto-recovers the audio stream instead of crashing, and
@@ -22,6 +25,10 @@ from pynput.keyboard import Controller, Key
 
 import openwakeword
 from openwakeword.model import Model
+
+# wake_ipc lives in src/ and is dependency-free (no Qt / project imports).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
+from wake_ipc import send_trigger
 
 SAMPLE_RATE = 16000
 FRAME = 1280  # 80 ms at 16 kHz (openWakeWord's expected chunk size)
@@ -93,6 +100,10 @@ def main():
                         help="Seconds to ignore further triggers after one fires.")
     parser.add_argument("--framework", default="onnx", choices=["onnx", "tflite"],
                         help="Inference backend.")
+    parser.add_argument("--trigger", default="auto", choices=["auto", "ipc", "keystroke"],
+                        help="How to start a dictation on detection: 'ipc' pokes the app over "
+                             "local IPC (needed for Wayland/evdev), 'keystroke' fakes the hotkey, "
+                             "'auto' tries IPC then falls back to the keystroke.")
     args = parser.parse_args()
 
     print("Ensuring wake-word models are downloaded...", flush=True)
@@ -108,12 +119,21 @@ def main():
     activation_keys, activation_str = load_activation_keys()
     print(f"Wake word will trigger the activation hotkey: {activation_str}", flush=True)
 
-    def trigger():
+    def keystroke():
         # Press the configured combo (modifiers first), then release in reverse.
         for k in activation_keys:
             kb.press(k)
         for k in reversed(activation_keys):
             kb.release(k)
+
+    def trigger():
+        if args.trigger in ("auto", "ipc"):
+            if send_trigger():
+                return
+            if args.trigger == "ipc":
+                print("  (IPC trigger failed: is the app running?)", flush=True)
+                return
+        keystroke()
 
     # MME (default) accepts 16 kHz and coexists at idle; the recovery loop below
     # handles the brief contention while WhisperWriter records a dictation.

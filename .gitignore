@@ -138,6 +138,8 @@ wake_err.txt
 
 # Launcher runtime PID file
 .cw_pids
+# Wake-listener IPC port file
+.cw_wake_port
 
 # Generated macOS app bundle (built by install-mac.sh)
 CustomWhisper.app/
