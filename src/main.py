@@ -213,22 +213,21 @@ class WhisperWriterApp(QObject):
             print(f'Wake-word listener failed to start: {e}')
 
     def create_tray_icon(self):
-        """
-        Create the system tray icon and its context menu.
-        """
-        self.tray_icon = QSystemTrayIcon(QIcon(os.path.join('assets', 'ww-logo-custom.png')), self.app)
+        """Build the app menu.
 
+        On macOS the menu is attached to the *Dock* icon (right-click it to get
+        Open Main Window / Settings… / Quit), which is where a Mac user expects
+        it. On Windows/Linux it's a system-tray icon with a right-click menu, as
+        before.
+        """
         # Keep a reference on self so the menu (and its actions) isn't garbage
-        # collected while the tray icon is alive.
+        # collected while it's the active Dock / tray menu.
         self.tray_menu = QMenu()
 
         def add_item(text, handler):
             action = QAction(text, self.app)
-            # macOS relocates items whose text matches a heuristic (e.g. "Settings"
-            # -> PreferencesRole, "Quit"/"Exit" -> QuitRole) out of the tray menu
-            # and into the app menu, which a menu-bar-only app never shows — so the
-            # item silently vanishes. Setting NoRole *before* adding the action
-            # keeps every item in the tray menu where the user expects it.
+            # NoRole keeps items from being relocated by macOS's text heuristic
+            # (e.g. "Settings" -> PreferencesRole) out of the menu we build.
             action.setMenuRole(QAction.NoRole)
             action.triggered.connect(handler)
             self.tray_menu.addAction(action)
@@ -239,8 +238,15 @@ class WhisperWriterApp(QObject):
         self.tray_menu.addSeparator()
         add_item('Quit CustomWhisper', self.exit_app)
 
-        self.tray_icon.setContextMenu(self.tray_menu)
-        self.tray_icon.show()
+        if sys.platform == 'darwin':
+            # Attach our items to the Dock icon's right-click menu. macOS merges
+            # them above its own default Dock items (Show All Windows, Quit, …).
+            self.tray_menu.setAsDockMenu()
+        else:
+            self.tray_icon = QSystemTrayIcon(
+                QIcon(os.path.join('assets', 'ww-logo-custom.png')), self.app)
+            self.tray_icon.setContextMenu(self.tray_menu)
+            self.tray_icon.show()
 
     def _present_window(self, window):
         """Show a window and force it (and the app) to the foreground.
