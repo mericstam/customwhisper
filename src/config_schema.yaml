@@ -191,7 +191,21 @@ wake_word:
   enabled:
     value: true
     type: bool
-    description: "Enable the 'Hey Jarvis' wake word to start a dictation hands-free, in addition to the activation hotkey."
+    description: "Enable the wake word to start a dictation hands-free, in addition to the activation hotkey."
+  model:
+    value: hey_jarvis
+    type: str
+    description: "Wake phrase. hey_jarvis is the most reliable (official openWakeWord model). alexa / hey_mycroft / hey_rhasspy are also official. computer_v2 (says 'Computer') is a community model and less accurate — more misses and false triggers."
+    options:
+      - hey_jarvis
+      - alexa
+      - hey_mycroft
+      - hey_rhasspy
+      - computer_v2
+  threshold:
+    value: 0.5
+    type: float
+    description: "Detection confidence 0-1. Higher = fewer false triggers. Raise it if a short wake word like 'computer' fires too easily."
 
 # In-dictation voice commands (require Vosk). Say e.g. "Jarvis session hold/start/stop".
 voice_commands:

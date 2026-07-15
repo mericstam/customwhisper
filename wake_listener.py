@@ -27,6 +27,48 @@ SAMPLE_RATE = 16000
 FRAME = 1280  # 80 ms at 16 kHz (openWakeWord's expected chunk size)
 
 
+# openWakeWord's bundled pre-trained models (referenced by bare name).
+BUILTIN_WAKEWORDS = {
+    'alexa', 'hey_jarvis', 'hey_mycroft', 'hey_rhasspy', 'timer', 'weather',
+}
+
+
+def load_wakeword_config():
+    """Read wake_word.{model,threshold} from config. Falls back to hey_jarvis/0.5."""
+    model, threshold = 'hey_jarvis', 0.5
+    try:
+        import yaml
+        here = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(here, 'src', 'config.yaml')) as f:
+            cfg = yaml.safe_load(f) or {}
+        ww = cfg.get('wake_word', {}) or {}
+        model = ww.get('model') or model
+        if ww.get('threshold') is not None:
+            threshold = float(ww['threshold'])
+    except Exception as e:
+        print(f"  (couldn't read wake_word config, using {model}: {e})", flush=True)
+    return model, threshold
+
+
+def resolve_wakeword(name, framework):
+    """Map a wake-word name to (model_arg, score_key).
+
+    A built-in name is passed through as-is. Any other name is treated as a
+    custom model bundled in wakewords/<name>.<ext>; openWakeWord keys its score
+    by the file's base name, so that becomes the score_key.
+    """
+    if name in BUILTIN_WAKEWORDS:
+        return name, name
+    here = os.path.dirname(os.path.abspath(__file__))
+    ext = 'tflite' if framework == 'tflite' else 'onnx'
+    path = os.path.join(here, 'wakewords', f'{name}.{ext}')
+    if os.path.exists(path):
+        return path, name
+    # Unknown name and no bundled file — let openWakeWord try it as a built-in
+    # (it will raise a clear error if it isn't one).
+    return name, name
+
+
 def _parent_gone(initial_ppid):
     """True once our parent process has died and the OS has reparented us.
 
@@ -99,10 +141,14 @@ def pick_wasapi_input():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--wakeword", default="hey_jarvis",
-                        help="Pre-trained wake word model name (e.g. hey_jarvis, alexa, hey_mycroft).")
-    parser.add_argument("--threshold", type=float, default=0.5,
-                        help="Detection confidence threshold (0-1). Higher = fewer false triggers.")
+    parser.add_argument("--wakeword", default=None,
+                        help="Wake word: a built-in openWakeWord name (hey_jarvis, "
+                             "alexa, hey_mycroft, hey_rhasspy) or a custom model in "
+                             "wakewords/ (e.g. computer_v2). Defaults to wake_word.model "
+                             "in config.yaml.")
+    parser.add_argument("--threshold", type=float, default=None,
+                        help="Detection confidence threshold (0-1). Higher = fewer false "
+                             "triggers. Defaults to wake_word.threshold in config.yaml.")
     parser.add_argument("--cooldown", type=float, default=3.0,
                         help="Seconds to ignore further triggers after one fires.")
     parser.add_argument("--framework", default="onnx", choices=["onnx", "tflite"],
@@ -115,14 +161,20 @@ def main():
 
     initial_ppid = os.getppid()
 
+    # CLI flags win; otherwise take the wake word + threshold from config.yaml.
+    cfg_model, cfg_threshold = load_wakeword_config()
+    wakeword = args.wakeword or cfg_model
+    threshold = args.threshold if args.threshold is not None else cfg_threshold
+    model_arg, score_key = resolve_wakeword(wakeword, args.framework)
+
     print("Ensuring wake-word models are downloaded...", flush=True)
     try:
         openwakeword.utils.download_models()
     except Exception as e:
         print(f"  (download_models note: {e})", flush=True)
 
-    print(f"Loading wake word '{args.wakeword}' ({args.framework})...", flush=True)
-    model = Model(wakeword_models=[args.wakeword], inference_framework=args.framework)
+    print(f"Loading wake word '{wakeword}' ({args.framework}) from {model_arg}...", flush=True)
+    model = Model(wakeword_models=[model_arg], inference_framework=args.framework)
 
     kb = Controller()
     activation_keys, activation_str = load_activation_keys()
@@ -139,8 +191,9 @@ def main():
     # handles the brief contention while WhisperWriter records a dictation.
     device, extra_settings = None, None
     backend = "default (MME)"
-    print(f"\nWake listener READY ({backend}). Say \"{args.wakeword.replace('_', ' ')}\" to start dictation.\n"
-          f"(threshold={args.threshold}, cooldown={args.cooldown}s)\n", flush=True)
+    spoken = wakeword.replace('_v1', '').replace('_v2', '').replace('_', ' ')
+    print(f"\nWake listener READY ({backend}). Say \"{spoken}\" to start dictation.\n"
+          f"(threshold={threshold}, cooldown={args.cooldown}s)\n", flush=True)
 
     last_trigger = 0.0
     # Outer loop: (re)open the stream and recover from transient device errors
@@ -164,9 +217,9 @@ def main():
                         break
                     audio = np.frombuffer(bytes(data), dtype=np.int16).flatten()
                     scores = model.predict(audio)
-                    score = float(scores.get(args.wakeword, 0.0))
+                    score = float(scores.get(score_key, 0.0))
                     now = time.time()
-                    if score >= args.threshold and (now - last_trigger) > args.cooldown:
+                    if score >= threshold and (now - last_trigger) > args.cooldown:
                         last_trigger = now
                         print(f"  [{time.strftime('%H:%M:%S')}] detected (score={score:.2f}) -> dictation", flush=True)
                         trigger()
