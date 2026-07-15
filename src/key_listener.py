@@ -762,12 +762,21 @@ class PynputBackend(InputBackend):
         self.key_map = None
 
     def start(self):
-        """Start listening for keyboard and mouse events."""
+        """Start listening for keyboard and mouse events.
+
+        Idempotent: the app re-arms by calling start() after every dictation, so
+        we must stop any existing listeners first. Otherwise each call would
+        stack another OS listener that also delivers every key event, causing one
+        hotkey press to fire on_activation multiple times — which finalized
+        recordings early and produced duplicate transcriptions.
+        """
         if self.keyboard is None or self.mouse is None:
             from pynput import keyboard, mouse
             self.keyboard = keyboard
             self.mouse = mouse
             self.key_map = self._create_key_map()
+
+        self.stop()  # tear down any previously-started listeners first
 
         self.keyboard_listener = self.keyboard.Listener(
             on_press=self._on_keyboard_press,
