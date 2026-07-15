@@ -3,7 +3,7 @@ import sys
 import time
 from audioplayer import AudioPlayer
 from pynput.keyboard import Controller
-from PyQt5.QtCore import QObject, QProcess
+from PyQt5.QtCore import QObject, QProcess, Qt
 from PyQt5.QtGui import QIcon, QPalette, QColor
 from PyQt5.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QAction, QMessageBox
 
@@ -147,7 +147,7 @@ class WhisperWriterApp(QObject):
         self.result_thread = None
 
         self.main_window = MainWindow()
-        self.main_window.openSettings.connect(self.settings_window.show)
+        self.main_window.openSettings.connect(self.show_settings)
         self.main_window.startListening.connect(self.on_start_listening)
         self.main_window.closeApp.connect(self.exit_app)
 
@@ -218,27 +218,59 @@ class WhisperWriterApp(QObject):
         """
         self.tray_icon = QSystemTrayIcon(QIcon(os.path.join('assets', 'ww-logo-custom.png')), self.app)
 
-        tray_menu = QMenu()
+        # Keep a reference on self so the menu (and its actions) isn't garbage
+        # collected while the tray icon is alive.
+        self.tray_menu = QMenu()
 
-        show_action = QAction('CustomWhisper Main Menu', self.app)
-        show_action.triggered.connect(self.main_window.show)
-        tray_menu.addAction(show_action)
-
-        settings_action = QAction('Open Settings', self.app)
-        settings_action.triggered.connect(self.settings_window.show)
-        tray_menu.addAction(settings_action)
-
-        exit_action = QAction('Exit', self.app)
-        exit_action.triggered.connect(self.exit_app)
-        tray_menu.addAction(exit_action)
-
-        # On macOS, Qt's text heuristic (e.g. "Settings" -> PreferencesRole) can
-        # relocate/hide items from a tray menu; NoRole keeps them all in place.
-        for action in (show_action, settings_action, exit_action):
+        def add_item(text, handler):
+            action = QAction(text, self.app)
+            # macOS relocates items whose text matches a heuristic (e.g. "Settings"
+            # -> PreferencesRole, "Quit"/"Exit" -> QuitRole) out of the tray menu
+            # and into the app menu, which a menu-bar-only app never shows — so the
+            # item silently vanishes. Setting NoRole *before* adding the action
+            # keeps every item in the tray menu where the user expects it.
             action.setMenuRole(QAction.NoRole)
+            action.triggered.connect(handler)
+            self.tray_menu.addAction(action)
+            return action
 
-        self.tray_icon.setContextMenu(tray_menu)
+        add_item('Open Main Window', self.show_main_window)
+        add_item('Settings…', self.show_settings)
+        self.tray_menu.addSeparator()
+        add_item('Quit CustomWhisper', self.exit_app)
+
+        self.tray_icon.setContextMenu(self.tray_menu)
         self.tray_icon.show()
+
+    def _present_window(self, window):
+        """Show a window and force it (and the app) to the foreground.
+
+        On macOS a tray-triggered show() opens the frameless window behind the
+        current app with no focus, so it looks like nothing happened. Activating
+        the app and raising the window brings it reliably to the front. Also
+        re-centers it so it can't reappear off-screen.
+        """
+        if sys.platform == 'darwin':
+            try:
+                from AppKit import NSApplication
+                NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+            except Exception as e:
+                print(f'macOS app activation skipped: {e}')
+        if hasattr(window, 'setWindowPosition'):
+            window.setWindowPosition()
+        window.show()
+        window.setWindowState(
+            (window.windowState() & ~Qt.WindowMinimized) | Qt.WindowActive)
+        window.raise_()
+        window.activateWindow()
+
+    def show_settings(self):
+        """Open the settings window, brought to the front."""
+        self._present_window(self.settings_window)
+
+    def show_main_window(self):
+        """Open the main window, brought to the front."""
+        self._present_window(self.main_window)
 
     def cleanup(self):
         # These components only exist once initialize_components() has run. On
