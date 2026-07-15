@@ -26,6 +26,20 @@ from openwakeword.model import Model
 SAMPLE_RATE = 16000
 FRAME = 1280  # 80 ms at 16 kHz (openWakeWord's expected chunk size)
 
+
+def _parent_gone(initial_ppid):
+    """True once our parent process has died and the OS has reparented us.
+
+    On POSIX an orphaned child is reparented (to launchd/init), so getppid()
+    stops matching the pid that spawned us. This lets the listener self-terminate
+    when the app that started it exits — even on a crash or force-quit, where the
+    app never gets to kill us — so no orphan is left holding the mic / hotkey.
+    """
+    try:
+        return os.getppid() != initial_ppid
+    except Exception:
+        return False
+
 # Map activation-key tokens (as written in config's recording_options.activation_key)
 # to pynput keys, so the wake word triggers the SAME hotkey the app listens for.
 _MODMAP = {
@@ -93,7 +107,13 @@ def main():
                         help="Seconds to ignore further triggers after one fires.")
     parser.add_argument("--framework", default="onnx", choices=["onnx", "tflite"],
                         help="Inference backend.")
+    parser.add_argument("--exit-with-parent", action="store_true",
+                        help="Exit automatically when the process that spawned this "
+                             "listener dies. The app passes this so an unclean app "
+                             "exit (crash/force-quit) can't leave an orphan behind.")
     args = parser.parse_args()
+
+    initial_ppid = os.getppid()
 
     print("Ensuring wake-word models are downloaded...", flush=True)
     try:
@@ -126,11 +146,17 @@ def main():
     # Outer loop: (re)open the stream and recover from transient device errors
     # (e.g. WhisperWriter briefly taking the mic during a dictation).
     while True:
+        if args.exit_with_parent and _parent_gone(initial_ppid):
+            print("  parent process gone; exiting wake listener.", flush=True)
+            return
         try:
             with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16",
                                 blocksize=FRAME, device=device,
                                 extra_settings=extra_settings) as stream:
                 while True:
+                    if args.exit_with_parent and _parent_gone(initial_ppid):
+                        print("  parent process gone; exiting wake listener.", flush=True)
+                        return
                     try:
                         data, _ = stream.read(FRAME)
                     except sd.PortAudioError:
