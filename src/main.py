@@ -188,6 +188,16 @@ class WhisperWriterApp(QObject):
             return
         try:
             import subprocess
+            # Sweep any wake listeners orphaned by a previous unclean exit before
+            # spawning ours — otherwise each one fires the activation hotkey on the
+            # wake word, toggling recording on and immediately back off.
+            try:
+                from process_cleanup import kill_wake_listeners
+                stale = kill_wake_listeners()
+                if stale:
+                    print(f'Cleared {len(stale)} lingering wake listener(s) before start.')
+            except Exception as e:
+                print(f'Wake-listener cleanup skipped: {e}')
             repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             log = open(os.path.join(repo_root, 'wake_out.txt'), 'a',
                        buffering=1, encoding='utf-8', errors='replace')

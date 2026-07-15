@@ -104,7 +104,7 @@ def _ancestors(pid, parent_of):
     return seen
 
 
-def _select_targets(procs):
+def _select_targets(procs, markers=None):
     """Windows: given [(pid, ppid, cmdline)], return PIDs of our related processes.
 
     On Windows the venv interpreter (venv\\Scripts\\pythonw.exe) lives inside the
@@ -112,6 +112,9 @@ def _select_targets(procs):
 
     Spares this process and its ancestor launchers (run.py wrappers) so this
     process can still shut Qt down cleanly; those wrappers exit on their own.
+
+    If ``markers`` is given, only processes whose command line contains one of the
+    marker script names qualify (e.g. ("wake_listener.py",) to kill just those).
     """
     parent_of = {pid: ppid for pid, ppid, _ in procs}
     me = os.getpid()
@@ -121,6 +124,7 @@ def _select_targets(procs):
     return [
         pid for pid, _, cmdline in procs
         if pid not in spare and repo_root in cmdline.lower()
+        and (markers is None or any(m in cmdline for m in markers))
     ]
 
 
@@ -145,11 +149,13 @@ def _proc_cwd(pid):
     return None
 
 
-def _select_targets_posix(procs):
+def _select_targets_posix(procs, markers=SCRIPT_MARKERS):
     """macOS/Linux: return PIDs of our related python processes.
 
-    A process qualifies if it runs one of our entry-point scripts AND its working
-    directory is this repo. Spares this process and its ancestor launchers.
+    A process qualifies if it runs one of the ``markers`` entry-point scripts AND
+    its working directory is this repo. Spares this process and its ancestor
+    launchers. Pass a narrower ``markers`` (e.g. ("wake_listener.py",)) to target
+    only a specific kind of process.
     """
     parent_of = {pid: ppid for pid, ppid, _ in procs}
     me = os.getpid()
@@ -160,7 +166,7 @@ def _select_targets_posix(procs):
     for pid, _, cmdline in procs:
         if pid in spare:
             continue
-        if not any(marker in cmdline for marker in SCRIPT_MARKERS):
+        if not any(marker in cmdline for marker in markers):
             continue
         cwd = _proc_cwd(pid)
         if cwd and os.path.realpath(cwd) == repo_root:
@@ -168,18 +174,17 @@ def _select_targets_posix(procs):
     return targets
 
 
-def kill_related_processes():
-    """Kill every CustomWhisper python process except this one and its ancestors.
+def _kill_matching(markers):
+    """Kill our repo's python processes matching ``markers`` (None = all of them).
 
-    Our own ancestor launchers (run.py wrappers) are spared so this process can
-    still shut Qt down cleanly; those wrappers exit on their own once we do.
-    Returns the list of PIDs it asked the OS to terminate.
+    Spares this process and its ancestor launchers. Returns the PIDs it asked the
+    OS to terminate.
     """
     if sys.platform.startswith("win"):
         procs = _list_python_processes()
         if not procs:
             return []
-        targets = _select_targets(procs)
+        targets = _select_targets(procs, markers=markers)
         for pid in targets:
             # /T also terminates child processes (e.g. a run.py wrapper's main.py).
             try:
@@ -198,7 +203,8 @@ def kill_related_processes():
         procs = _list_python_processes_posix()
         if not procs:
             return []
-        targets = _select_targets_posix(procs)
+        markers_posix = markers if markers is not None else SCRIPT_MARKERS
+        targets = _select_targets_posix(procs, markers=markers_posix)
         for pid in targets:
             try:
                 os.kill(pid, signal.SIGTERM)
@@ -209,3 +215,24 @@ def kill_related_processes():
         return targets
 
     return []
+
+
+def kill_related_processes():
+    """Kill every CustomWhisper python process except this one and its ancestors.
+
+    Our own ancestor launchers (run.py wrappers) are spared so this process can
+    still shut Qt down cleanly; those wrappers exit on their own once we do.
+    Returns the list of PIDs it asked the OS to terminate.
+    """
+    return _kill_matching(None)
+
+
+def kill_wake_listeners():
+    """Kill any lingering wake_listener.py processes from previous app runs.
+
+    Called before spawning a fresh listener so exactly one ever runs — orphans
+    from an unclean exit (window closed / crash) would otherwise each fire the
+    activation hotkey on the wake word, toggling recording on and back off.
+    Returns the PIDs it asked the OS to terminate.
+    """
+    return _kill_matching(("wake_listener.py",))
