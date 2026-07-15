@@ -201,8 +201,11 @@ class WhisperWriterApp(QObject):
             repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             log = open(os.path.join(repo_root, 'wake_out.txt'), 'a',
                        buffering=1, encoding='utf-8', errors='replace')
+            # --exit-with-parent: the listener self-terminates if we die uncleanly
+            # (crash/force-quit), so it can never linger as an orphan holding the mic.
             self.wake_process = subprocess.Popen(
-                [sys.executable, os.path.join(repo_root, 'wake_listener.py')],
+                [sys.executable, os.path.join(repo_root, 'wake_listener.py'),
+                 '--exit-with-parent'],
                 cwd=repo_root, stdout=log, stderr=subprocess.STDOUT,
             )
             print('Wake-word listener started (say "Hey Jarvis"). Logs: wake_out.txt')
