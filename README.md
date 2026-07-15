@@ -13,7 +13,9 @@ OpenAI API.
 
 What makes this build *custom*:
 
-- **"Hey Jarvis" wake word** — start a dictation completely hands-free, no key press needed.
+- **Wake word** — start a dictation completely hands-free, no key press needed. Pick the wake phrase
+  in **Settings > Wake word** (`hey_jarvis` by default; also `alexa`, `hey_mycroft`, `hey_rhasspy`, or
+  a custom model such as `computer_v2` → *"Computer"*).
 - **Spoken commands mid-dictation** — say *"Jarvis hold / continue / end session / cancel"* to pause,
   resume, finish, or discard a recording without touching the keyboard.
 - **Custom app-launch commands** — map a spoken phrase (e.g. *"open word"*) to launching an app, file,
@@ -30,12 +32,30 @@ The app has two cooperating processes (both launched by `Start Hands-Free.pyw`):
    activation hotkey (`Right-Ctrl + Space` by default), records, transcribes, and writes the result
    into the focused window.
 2. **`wake_listener.py`** — an always-on, fully local wake-word listener (openWakeWord). When it hears
-   "Hey Jarvis", it simulates the activation hotkey to kick off a dictation. It coexists with the app
-   and auto-recovers if the mic is briefly grabbed during a dictation.
+   the configured wake phrase, it simulates the activation hotkey to kick off a dictation. It coexists
+   with the app and auto-recovers if the mic is briefly grabbed during a dictation.
 
 While recording, an optional **voice-command recognizer** (`src/command_recognizer.py`, using Vosk
 with a constrained grammar) listens for command phrases and acts on them, trimming the spoken command
 out of the audio so it isn't transcribed.
+
+### Wake word
+
+Choose the wake phrase in **Settings > Wake word** (`wake_word.model` in the config):
+
+| Model | Say… | Notes |
+|-------|------|-------|
+| `hey_jarvis` *(default)* | "Hey Jarvis" | Official openWakeWord model — most reliable |
+| `alexa` | "Alexa" | Official |
+| `hey_mycroft` | "Hey Mycroft" | Official |
+| `hey_rhasspy` | "Hey Rhasspy" | Official |
+| `computer_v2` | "Computer" | Community model (bundled in `wakewords/`); less accurate — more misses and false triggers |
+
+- **`wake_word.threshold`** (0–1, default `0.5`) — detection confidence. Raise it (e.g. `0.75`) if a
+  short wake word like "Computer" fires too easily on background noise.
+- **Custom models** — drop any openWakeWord `.onnx`/`.tflite` model into the `wakewords/` folder and
+  set `wake_word.model` to its file name without the extension. Built-in names are used as-is.
+- Changing the wake word in Settings restarts the app so the listener picks up the new phrase.
 
 ### Voice commands
 
@@ -99,6 +119,7 @@ src/
   config_schema.yaml         # defaults + descriptions for every setting
   config.yaml                # your saved settings (git-ignored)
   ui/                        # PyQt5 windows: main, settings, status
+wakewords/                   # custom openWakeWord models (e.g. computer_v2.onnx/.tflite)
 assets/                      # icons, beep sound, demo gifs
 ```
 
@@ -182,7 +203,8 @@ Jarvis"** or tap the hotkey to dictate.
 - **macOS:** launch **`CustomWhisper.app`** (double-click in Finder, or `open CustomWhisper.app`). This
   gives the app its own identity for the privacy permissions — see [Install (macOS)](#install-macos-apple-silicon).
   `Start CustomWhisper.command` runs it from a terminal instead (handy for live logs); the wake word
-  runs inside the app either way.
+  runs inside the app either way. After you press **Start** the window hides — **right-click the app's
+  Dock icon** to reach **Open Main Window**, **Settings…**, or **Quit CustomWhisper**.
 - **Windows:** double-click `Start Hands-Free.pyw` (app + wake listener) or `Start CustomWhisper.pyw`
   (hotkey only); these run windowless via `pythonw`.
 - **Stop everything:** `Stop CustomWhisper.pyw` (Windows) / `Stop CustomWhisper.command` (macOS).
@@ -209,6 +231,8 @@ directly. Highlights:
   period handling.
 - **`voice_commands`** — `enabled` and `trim_ms` (safety margin trimmed around a spoken command so the
   command word isn't transcribed).
+- **`wake_word`** — `enabled`, `model` (built-in name or a custom model in `wakewords/`; see
+  [Wake word](#wake-word)), and `threshold` (detection confidence; raise it to reduce false triggers).
 
 To use the OpenAI API instead of a local model, set `model_options.use_api: true` and put your key in
 a `.env` file (`OPENAI_API_KEY=...`) or via the Settings window.
@@ -217,9 +241,11 @@ a `.env` file (`OPENAI_API_KEY=...`) or via the Settings window.
 
 This project modifies [WhisperWriter](https://github.com/savbell/whisper-writer) by adding:
 
-- An always-on **"Hey Jarvis" wake-word listener** (`wake_listener.py`) for fully hands-free
-  activation, plus windowless `.pyw` launchers (`Start Hands-Free.pyw`, `Stop CustomWhisper.pyw`) and
-  an `install.ps1` setup script.
+- An always-on **wake-word listener** (`wake_listener.py`) for fully hands-free activation, with a
+  **selectable wake phrase** (**Settings > Wake word**: `hey_jarvis`, `alexa`, `hey_mycroft`,
+  `hey_rhasspy`, or custom `wakewords/` models like `computer_v2`) and a tunable detection threshold,
+  plus windowless `.pyw` launchers (`Start Hands-Free.pyw`, `Stop CustomWhisper.pyw`) and an
+  `install.ps1` setup script.
 - **In-dictation voice commands** via Vosk (`src/command_recognizer.py`) — *"Jarvis hold / continue /
   end session / cancel"* — wired into the recording loop in `src/result_thread.py`, with audio
   trimming so command words aren't transcribed.
@@ -238,8 +264,8 @@ This project modifies [WhisperWriter](https://github.com/savbell/whisper-writer)
   via PowerShell/taskkill, macOS/Linux via `ps`/cwd matching).
 - **macOS (Apple Silicon) support** — an [mlx-whisper](https://github.com/ml-explore/mlx-examples)
   transcription backend selected automatically on Apple Silicon (`src/transcription.py`), Cmd+V
-  clipboard paste, `open`-based app-launch commands, `.command` launchers, and `install-mac.sh`.
-  Upstream WhisperWriter is Windows/Linux-only.
+  clipboard paste, `open`-based app-launch commands, a **Dock-icon menu** (Open Main Window / Settings…
+  / Quit), `.command` launchers, and `install-mac.sh`. Upstream WhisperWriter is Windows/Linux-only.
 
 ## Credits & licenses
 
